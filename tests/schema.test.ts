@@ -40,3 +40,52 @@ it("applies the PostgreSQL migration, denies browser roles, preserves original f
     await db.close();
   }
 });
+it("applies the contract migration with RLS, immutable originals and its own prune", async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(
+      "create role anon; create role authenticated; create role service_role;",
+    );
+    for (const file of [
+      "20261113092438_pulseterminal.sql",
+      "20261113120000_kalshi_contracts.sql",
+    ])
+      await db.exec(await readFile(`supabase/migrations/${file}`, "utf8"));
+    const tables = await db.query<{ relrowsecurity: boolean }>(
+      "select relrowsecurity from pg_class where relnamespace='public'::regnamespace and relkind='r'",
+    );
+    expect(tables.rows).toHaveLength(14);
+    expect(tables.rows.every((x) => x.relrowsecurity)).toBe(true);
+    for (const table of [
+      "contract_snapshots",
+      "contract_outcomes",
+      "contract_settlements",
+    ]) {
+      await db.exec(
+        `insert into public.${table}(id,event_time,mode,payload) values ('w1', now(), 'live', '{"result":"UP"}')`,
+      );
+      await db.exec(
+        `insert into public.${table}(id,event_time,mode,payload) values ('w1', now(), 'live', '{"result":"UP"}') on conflict (id) do update set payload = excluded.payload, event_time = public.${table}.event_time`,
+      );
+      await expect(
+        db.exec(
+          `update public.${table} set payload='{"result":"DOWN"}' where id='w1'`,
+        ),
+      ).rejects.toThrow("immutable");
+    }
+    await db.exec("set role anon");
+    await expect(
+      db.query("select * from public.kalshi_quotes"),
+    ).rejects.toThrow("permission denied");
+    await db.exec("reset role");
+    await db.exec(
+      "insert into public.kalshi_quotes values ('old', now()-interval '40 days', 'live', '{}', now())",
+    );
+    await db.exec("select private.prune_contract_history()");
+    expect(
+      (await db.query("select * from public.kalshi_quotes")).rows,
+    ).toHaveLength(0);
+  } finally {
+    await db.close();
+  }
+});

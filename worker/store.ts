@@ -17,7 +17,11 @@ export type Stored = {
   time: number;
   mode: string;
   payload: unknown;
+  localOnly?: boolean;
 };
+// High-rate per-second contract records use separate, shorter-retention journal files.
+export const TICK_TABLES = new Set(["kalshi_quotes", "contract_snapshots"]);
+const journal = /^(events|ticks)-\d{4}-\d{2}-\d{2}\.jsonl$/;
 export class Store {
   dir = process.env.LOCAL_DATA_DIR || "./data";
   error: string | null = null;
@@ -37,10 +41,12 @@ export class Store {
     try {
       await mkdir(this.dir, { recursive: true });
       if (this.client) this.label = "LOCAL + SUPABASE";
+      const tickDays = Number(process.env.CONTRACT_TICK_RETENTION_DAYS) || 30;
       for (const name of await readdir(this.dir)) {
+        const days = name.startsWith("ticks-") ? tickDays : 180;
         if (
-          /^events-\d{4}-\d{2}-\d{2}\.jsonl$/.test(name) &&
-          Date.parse(name.slice(7, 17)) < Date.now() - 180 * 86400000
+          journal.test(name) &&
+          Date.parse(name.slice(-16, -6)) < Date.now() - days * 86400000
         )
           await unlink(path.join(this.dir, name));
       }
@@ -116,15 +122,15 @@ export class Store {
         await appendFile(
           path.join(
             this.dir,
-            `events-${new Date(row.time).toISOString().slice(0, 10)}.jsonl`,
+            `${TICK_TABLES.has(row.table) ? "ticks" : "events"}-${new Date(row.time).toISOString().slice(0, 10)}.jsonl`,
           ),
-          JSON.stringify(row) + "\n",
+          JSON.stringify({ ...row, localOnly: undefined }) + "\n",
         );
       } catch (e) {
         this.error = String(e);
       }
     }
-    if (this.client) {
+    if (this.client && !row.localOnly) {
       if (this.queue.length >= 10000) {
         this.error =
           "Supabase queue full; durable local journal remains authoritative";

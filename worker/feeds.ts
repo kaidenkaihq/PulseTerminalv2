@@ -35,7 +35,7 @@ export interface MarketAdapter {
   start(): void;
   stop(): void;
 }
-class Socket implements MarketAdapter {
+export class Socket implements MarketAdapter {
   socket?: WebSocket;
   retry?: NodeJS.Timeout;
   monitor?: NodeJS.Timeout;
@@ -46,8 +46,10 @@ class Socket implements MarketAdapter {
     public engine: Engine,
     public source: string,
     public url: string,
-    public subscriptions: unknown[],
+    public subscriptions: unknown[] | (() => unknown[]),
     public handle: (raw: unknown, now: number) => void,
+    // Authenticated venues sign each handshake; headers are rebuilt on every connect.
+    public headers?: () => Record<string, string>,
   ) {}
   start() {
     this.stopped = false;
@@ -64,10 +66,17 @@ class Socket implements MarketAdapter {
     if (this.stopped) return;
     const h = this.engine.healthFor(this.source);
     h.status = "CONNECTING";
-    this.socket = new WebSocket(this.url, {
-      maxPayload: 16 * 1024 * 1024,
-      handshakeTimeout: 15000,
-    });
+    try {
+      this.socket = new WebSocket(this.url, {
+        maxPayload: 16 * 1024 * 1024,
+        handshakeTimeout: 15000,
+        headers: this.headers?.(),
+      });
+    } catch (e) {
+      this.engine.error(this.source, String(e));
+      h.status = "DISCONNECTED";
+      return;
+    }
     this.socket.on("open", () => {
       h.status = "CONNECTED";
       this.last = Date.now();
@@ -80,8 +89,14 @@ class Socket implements MarketAdapter {
         this.engine.candles.markGap();
         this.engine.minutes.markGap();
       }
-      for (const s of this.subscriptions) this.socket!.send(JSON.stringify(s));
+      const subscriptions =
+        typeof this.subscriptions === "function"
+          ? this.subscriptions()
+          : this.subscriptions;
+      for (const s of subscriptions) this.socket!.send(JSON.stringify(s));
     });
+    // Venues that ping only when idle (Kalshi) are alive while pinging.
+    this.socket.on("ping", () => (this.last = Date.now()));
     this.socket.on("message", (raw) => {
       const now = Date.now();
       this.last = now;

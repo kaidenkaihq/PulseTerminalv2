@@ -16,6 +16,8 @@ import type {
   Trade,
 } from "../lib/types";
 import type { Store } from "./store";
+import { ContractEngine } from "./contracts";
+import { contractConfig } from "../lib/contractConfig";
 export class Engine {
   mode: Mode;
   watchlist: string[];
@@ -47,6 +49,7 @@ export class Engine {
   divergence = Number(process.env.DIVERGENCE_PERCENT) || 0.2;
   atrPeriod = Number(process.env.ATR_PERIOD) || 14;
   multiplier = Number(process.env.SUPER_TREND_MULTIPLIER) || 3;
+  contracts = new ContractEngine(this, contractConfig());
   constructor(
     mode: Mode,
     public store: Store,
@@ -61,9 +64,15 @@ export class Engine {
       ).split(",");
     this.watchlist = [...new Set(["BTC-USD", ...this.watchlist])].slice(0, 30);
   }
-  persist(table: string, id: string, time: number, payload: unknown) {
+  persist(
+    table: string,
+    id: string,
+    time: number,
+    payload: unknown,
+    localOnly = false,
+  ) {
     this.storageTasks.push(
-      this.store.put({ table, id, time, mode: this.mode, payload }),
+      this.store.put({ table, id, time, mode: this.mode, payload, localOnly }),
     );
   }
   async drain() {
@@ -300,7 +309,16 @@ export class Engine {
       );
       this.lastSavedMinute = lastMinute.time;
     }
+    const contract = this.contracts.tick(now, {
+      price,
+      priceFresh: isFresh,
+      kraken: this.kraken?.price ?? null,
+      krakenFresh: fresh(this.kraken?.time, now, this.freshness),
+      imbalance: book?.imbalance ?? null,
+      atr: sig.atr,
+    });
     return {
+      contract,
       time: now,
       mode: this.mode,
       connection: isFresh ? "STREAMING" : "STALE / WARMING UP",

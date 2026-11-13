@@ -12,6 +12,7 @@ import { Engine } from "./engine";
 import { Store } from "./store";
 import { coinbaseAdapter, krakenAdapter, seedHistory } from "./feeds";
 import { replayStep, seedReplay } from "./replay";
+import { KalshiFeed } from "./kalshi";
 import type { Forecast, Outcome, Signal, PaperState } from "../lib/types";
 import { fresh } from "../lib/math";
 export async function createServer(
@@ -87,6 +88,12 @@ export async function createServer(
     market: snapshot.connection,
     persistence: store.label,
     clients: clients.size,
+    kalshi: {
+      status: engine.healthFor("kalshi").status,
+      ticker: snapshot.contract.quote?.ticker ?? null,
+      quoteAgeMs: snapshot.contract.quoteAge,
+      fresh: snapshot.contract.quoteFresh,
+    },
   }));
   app.get("/api/snapshot", () => snapshot);
   app.get("/ws", { websocket: true }, (socket, request) => {
@@ -254,8 +261,14 @@ export async function createServer(
       paper: engine.paper.state,
     });
   }
+  const kalshi = new KalshiFeed(engine, engine.contracts.config.kalshi);
+  if (mode === "replay" || options.startFeeds === false)
+    engine.healthFor("kalshi").status =
+      mode === "replay" ? "SYNTHETIC CONTRACT (not Kalshi)" : "NOT STARTED";
   const feeds =
-    mode === "live" ? [coinbaseAdapter(engine), krakenAdapter(engine)] : [];
+    mode === "live"
+      ? [coinbaseAdapter(engine), krakenAdapter(engine), kalshi]
+      : [];
   if (options.startFeeds !== false) {
     if (mode === "live") {
       feeds.forEach((f) => f.start());

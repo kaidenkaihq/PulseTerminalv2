@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { contractConfig } from "../lib/contractConfig";
 export function validateConfiguration() {
   z.object({
     DATA_MODE: z.enum(["live", "replay"]).optional(),
@@ -13,4 +14,5 @@ export function validateConfiguration() {
       .regex(/^[A-Z0-9]+-USD(,[A-Z0-9]+-USD)*$/)
       .optional(),
   }).parse(process.env);
+  contractConfig(process.env);
 }
