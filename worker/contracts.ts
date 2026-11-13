@@ -11,6 +11,12 @@ import {
 import { fresh } from "../lib/math";
 import { momentum } from "../lib/engines";
 import { fade } from "../lib/fade";
+import {
+  calibrationTable,
+  dataset,
+  type CalibrationCell,
+} from "../lib/calibration";
+import { ENGINES } from "../lib/engines";
 import type {
   ContractOutcome,
   ContractQuote,
@@ -58,6 +64,8 @@ export class ContractEngine {
   samples: ContractSnapshot[] = [];
   outcomes: ContractOutcome[] = [];
   taken = new Set<string>();
+  calibration: CalibrationCell[] = [];
+  stale = true;
   windows = new Map<
     number,
     {
@@ -95,6 +103,7 @@ export class ContractEngine {
     this.settlements.push(record);
     this.settlements = this.settlements.slice(-20000);
     this.engine.persist("contract_settlements", record.id, s.settled, record);
+    this.stale = true;
   }
   bar(now: number, ctx: TickContext) {
     const second = Math.floor(now / 1000) * 1000;
@@ -258,10 +267,13 @@ export class ContractEngine {
       outcomes: [],
       agreement: { compared: 0, mismatches: 0 },
       engines: {},
+      calibration: [],
     };
     view.engines = this.readings(now, view, ctx);
     this.record(now, view, ctx);
     this.resolveWindows(now);
+    if (this.stale) this.recalibrate();
+    view.calibration = this.calibration.map(({ model: _, ...c }) => c);
     view.outcomes = this.outcomes.slice(-20);
     view.agreement = this.agreement();
     return view;
@@ -389,10 +401,21 @@ export class ContractEngine {
       this.outcomes.push(outcome);
       this.outcomes = this.outcomes.slice(-20000);
       this.engine.persist("contract_outcomes", id, now, outcome);
+      this.stale = true;
       this.onOutcome?.(outcome);
     }
   }
   onOutcome?: (o: ContractOutcome) => void;
+  // Refit after each new outcome or official settlement; never per tick.
+  recalibrate() {
+    this.calibration = calibrationTable(
+      dataset(this.samples, this.outcomes, this.settlements),
+      ENGINES,
+      bucketLabels(this.config.buckets),
+      this.config.calibration,
+    );
+    this.stale = false;
+  }
   restore(state: Partial<ContractCheckpoint> | null) {
     if (!state) return;
     this.samples = state.samples ?? [];

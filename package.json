@@ -21,6 +21,7 @@
     "replay": "tsx scripts/walk-forward.ts",
     "format": "prettier --write app components lib worker tests scripts docs README.md *.json *.mjs *.ts",
     "replay:historical": "tsx scripts/historical-replay.ts",
+    "contracts:rebuild": "tsx scripts/contract-rebuild.ts",
     "build:worker": "esbuild worker/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-worker/index.mjs",
     "start:worker": "node dist-worker/index.mjs"
   },
