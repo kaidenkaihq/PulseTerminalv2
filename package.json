@@ -1,0 +1,71 @@
+{
+  "name": "pulseterminal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n web,worker \"next dev\" \"tsx watch worker/index.ts\"",
+    "dev:web": "next dev",
+    "worker": "tsx worker/index.ts",
+    "worker:replay": "cross-env DATA_MODE=replay tsx worker/index.ts",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/core.test.ts",
+    "test:integration": "vitest run tests/integration.test.ts",
+    "replay": "tsx scripts/walk-forward.ts",
+    "format": "prettier --write app components lib worker tests scripts docs README.md *.json *.mjs *.ts",
+    "replay:historical": "tsx scripts/historical-replay.ts",
+    "build:worker": "esbuild worker/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-worker/index.mjs",
+    "start:worker": "node dist-worker/index.mjs"
+  },
+  "dependencies": {
+    "@fastify/cors": "11.4.2",
+    "@fastify/rate-limit": "11.2.2",
+    "@fastify/websocket": "11.3.7",
+    "@radix-ui/react-slot": "1.5.0",
+    "@supabase/supabase-js": "2.119.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "dotenv": "18.0.10",
+    "fastify": "5.12.8",
+    "lightweight-charts": "5.3.0",
+    "lucide-react": "1.72.0",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwind-merge": "3.7.0",
+    "ws": "8.23.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.16",
+    "@playwright/test": "1.65.0",
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/ws": "8.18.2",
+    "concurrently": "10.0.7",
+    "cross-env": "10.1.0",
+    "esbuild": "0.28.2",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.6",
+    "prettier": "3.10.1",
+    "supabase": "3.1.0",
+    "tailwindcss": "4.3.5",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0"
+  },
+  "overrides": {
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "11.0.8"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+[
+  {
+    "type": "snapshot",
+    "product_id": "BTC-USD",
+    "bids": [["9999", "2"]],
+    "asks": [["10001", "1"]]
+  },
+  {
+    "type": "match",
+    "trade_id": 10,
+    "sequence": 99,
+    "product_id": "BTC-USD",
+    "time": "2026-11-13T09:00:00.000Z",
+    "side": "sell",
+    "price": "10000",
+    "size": "0.5"
+  },
+  {
+    "type": "l2update",
+    "product_id": "BTC-USD",
+    "time": "2026-11-13T09:00:00.100Z",
+    "changes": [
+      ["buy", "9999", "0"],
+      ["buy", "10000", "3"]
+    ]
+  },
+  {
+    "type": "match",
+    "trade_id": 11,
+    "sequence": 105,
+    "product_id": "BTC-USD",
+    "time": "2026-11-13T09:00:00.200Z",
+    "side": "buy",
+    "price": "10000.5",
+    "size": "0.1"
+  }
+]
