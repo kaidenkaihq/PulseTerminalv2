@@ -74,6 +74,9 @@ describe("isotonic calibration", () => {
     expect(calibrate(synthetic(150), "fade", "5–2m", cfg)).toMatchObject({
       status: "UNCALIBRATED",
     });
+    const tiny = calibrate(synthetic(3), "fade", "5–2m", cfg);
+    expect(tiny.model).toBeNull();
+    expect(tiny.n).toBe(0);
     const strong = calibrate(synthetic(600), "fade", "5–2m", cfg);
     expect(strong.status).toBe("CALIBRATED");
     expect(strong.n).toBe(580);

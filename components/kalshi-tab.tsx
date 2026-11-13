@@ -10,7 +10,6 @@ import {
   prob,
   sourceLabel,
 } from "./kalshi-strip";
-import { SignalHistory } from "./kalshi-signals";
 import type { ContractView } from "@/lib/types";
 import { etTime } from "@/lib/time";
 const usd = (v: number | null | undefined, dec = 2) =>
@@ -168,7 +167,6 @@ export function KalshiTab({
           </Card>
         ))}
       </div>
-      <SignalHistory worker={worker} count={c.signalCount} />
       <Card>
         <div className="flex flex-wrap justify-between items-center gap-3">
           <h2>Calibration · engine × seconds-to-close bucket</h2>

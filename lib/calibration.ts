@@ -220,7 +220,8 @@ export function calibrate(
     preds = walkForward(rows, cfg.refitEvery),
     m = metrics(preds),
     recent = metrics(preds.slice(-cfg.recentN)),
-    model = rows.length ? fit(rows) : null,
+    // No live probability until there are enough windows to fit anything but a raw base rate.
+    model = rows.length >= MIN_TRAIN ? fit(rows) : null,
     calibrated =
       preds.length >= cfg.minN &&
       m.brier !== null &&

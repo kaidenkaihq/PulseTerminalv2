@@ -27,6 +27,7 @@ import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { KalshiStrip } from "./kalshi-strip";
 import { KalshiTab } from "./kalshi-tab";
+import { SignalHistory } from "./kalshi-signals";
 import { analytics } from "@/lib/analytics";
 import { etDateTime, etTime } from "@/lib/time";
 import type { Snapshot } from "@/lib/types";
@@ -356,6 +357,14 @@ export function Terminal() {
                   stale={stale}
                   onOpen={() => setTab("Kalshi 15m")}
                 />
+              )}
+              {d?.contract && (
+                <div className="mb-4">
+                  <SignalHistory
+                    worker={worker}
+                    count={d.contract.signalCount}
+                  />
+                </div>
               )}
               <Card className="mb-4 !p-0">
                 <div
