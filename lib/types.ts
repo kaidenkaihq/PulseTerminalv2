@@ -1,4 +1,5 @@
 import type { CalibrationCell } from "./calibration";
+import type { EngineView, Fees, Verdict } from "./verdict";
 export type Mode = "live" | "replay";
 export type Side = "buy" | "sell";
 export type Direction = "UP" | "DOWN" | "FLAT";
@@ -250,6 +251,10 @@ export type ContractView = {
   agreement: { compared: number; mismatches: number };
   engines: Record<string, EngineReading>;
   calibration: Omit<CalibrationCell, "model">[];
+  engineViews: EngineView[];
+  verdict: Verdict | null;
+  fees: Fees;
+  minEdge: number;
   basis: {
     note: string;
     lastOpen: number | null;

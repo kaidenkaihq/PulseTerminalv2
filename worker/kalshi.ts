@@ -96,6 +96,7 @@ export class KalshiFeed implements MarketAdapter {
       );
       this.socket.start();
     }
+    void this.series();
     this.poll = setInterval(() => void this.refresh(), 1000);
     this.settleTimer = setInterval(() => void this.settlements(), 5000);
     void this.refresh();
@@ -105,6 +106,27 @@ export class KalshiFeed implements MarketAdapter {
     clearInterval(this.poll);
     clearInterval(this.settleTimer);
     this.socket?.stop();
+  }
+  // The series states its fee model; anything but the documented quadratic model is flagged.
+  async series() {
+    try {
+      const s = z
+        .object({
+          series: z.object({
+            fee_type: z.string(),
+            fee_multiplier: z.coerce.number().min(0),
+          }),
+        })
+        .parse(await this.get(`/series/${this.config.series}`)).series;
+      this.engine.contracts.feeMultiplier = s.fee_multiplier;
+      if (s.fee_type !== "quadratic")
+        this.engine.error(
+          "kalshi",
+          `Series fee_type ${s.fee_type} is not the modelled quadratic fee`,
+        );
+    } catch (e) {
+      this.engine.error("kalshi", `Series fee lookup: ${String(e)}`);
+    }
   }
   subscribe(ticker: string) {
     return {

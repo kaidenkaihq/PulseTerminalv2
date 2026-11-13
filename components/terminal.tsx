@@ -618,11 +618,14 @@ export function Terminal() {
                       <div className="rule" />
                       <div className="flex justify-between text-[10px] mb-3">
                         <span className="muted">
-                          Directional heuristic{" "}
-                          <span className="text-slate-300 ml-1">
+                          Raw score{" "}
+                          <span className="mono text-slate-300 ml-1">
                             {signal?.score == null
                               ? "—"
-                              : `${money(((1 + sign * signal.score) / 2) * 100, 0)} / 100`}
+                              : signed(sign * signal.score)}
+                          </span>
+                          <span className="ml-1">
+                            · raw score, not a probability
                           </span>
                         </span>
                         <span className="muted">

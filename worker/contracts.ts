@@ -17,6 +17,7 @@ import {
   type CalibrationCell,
 } from "../lib/calibration";
 import { ENGINES } from "../lib/engines";
+import { decide } from "../lib/verdict";
 import type {
   ContractOutcome,
   ContractQuote,
@@ -65,6 +66,8 @@ export class ContractEngine {
   outcomes: ContractOutcome[] = [];
   taken = new Set<string>();
   calibration: CalibrationCell[] = [];
+  // Read live from the Kalshi series (fee_multiplier); 1 until confirmed.
+  feeMultiplier = 1;
   stale = true;
   windows = new Map<
     number,
@@ -268,12 +271,34 @@ export class ContractEngine {
       agreement: { compared: 0, mismatches: 0 },
       engines: {},
       calibration: [],
+      engineViews: [],
+      verdict: null,
+      fees: {
+        rate: this.config.kalshi.feeRate,
+        multiplier: this.feeMultiplier,
+        precision: this.config.kalshi.feePrecision,
+      },
+      minEdge: this.config.minEdge,
     };
     view.engines = this.readings(now, view, ctx);
     this.record(now, view, ctx);
     this.resolveWindows(now);
     if (this.stale) this.recalibrate();
     view.calibration = this.calibration.map(({ model: _, ...c }) => c);
+    const decision = decide({
+      bucket: view.bucket,
+      readings: view.engines,
+      cells: this.calibration,
+      quote: view.quote,
+      quoteFresh: view.quoteFresh,
+      coinbaseFresh: ctx.priceFresh,
+      confirmation: String(ctx.features.confirmation ?? "STALE"),
+      contracts: this.config.paper.contracts,
+      fees: view.fees,
+      minEdge: this.config.minEdge,
+    });
+    view.engineViews = decision.engines;
+    view.verdict = decision.verdict;
     view.outcomes = this.outcomes.slice(-20);
     view.agreement = this.agreement();
     return view;
