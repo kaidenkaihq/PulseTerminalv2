@@ -18,12 +18,15 @@ import {
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
+  Target,
   Wallet,
   Wifi,
   Zap,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { KalshiStrip } from "./kalshi-strip";
+import { KalshiTab } from "./kalshi-tab";
 import { analytics } from "@/lib/analytics";
 import type { Snapshot } from "@/lib/types";
 const MarketChart = dynamic(
@@ -53,6 +56,7 @@ const utc = (v: number) =>
   new Date(v).toLocaleTimeString("en-GB", { timeZone: "UTC" });
 const tabs = [
   { name: "Dashboard", icon: Layers3 },
+  { name: "Kalshi 15m", icon: Target },
   { name: "Signal History", icon: BookOpen },
   { name: "Backtesting & Analytics", icon: FlaskConical },
   { name: "Paper Trading", icon: Wallet },
@@ -215,11 +219,11 @@ export function Terminal() {
       .toString()
       .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`,
     stats = d ? analytics(d.forecasts, d.outcomes, d.paper) : null;
-  async function mutate(endpoint: string, body: unknown) {
+  async function mutate(endpoint: string, body: unknown, base = "paper") {
     setBusy(true);
     setNotice("");
     try {
-      const response = await fetch(`${worker}/api/paper/${endpoint}`, {
+      const response = await fetch(`${worker}/api/${base}/${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -229,7 +233,11 @@ export function Terminal() {
       });
       const r = await response.json();
       if (!response.ok) throw Error(r.error || "Request failed");
-      setNotice("Paper account updated.");
+      setNotice(
+        base === "contracts"
+          ? "Contract paper account updated."
+          : "Paper account updated.",
+      );
     } catch (e) {
       setNotice(String(e));
     } finally {
@@ -341,6 +349,14 @@ export function Terminal() {
           )}
           {tab === "Dashboard" && (
             <>
+              {d?.contract && (
+                <KalshiStrip
+                  c={d.contract}
+                  now={now}
+                  stale={stale}
+                  onOpen={() => setTab("Kalshi 15m")}
+                />
+              )}
               <Card className="mb-4 !p-0">
                 <div
                   className={`absolute top-0 left-0 w-[60%] h-full pointer-events-none ${positive ? "bg-[radial-gradient(ellipse_at_top_left,#1be39e0b,transparent_65%)]" : "bg-[radial-gradient(ellipse_at_top_left,#f2638d0b,transparent_65%)]"}`}
@@ -937,6 +953,23 @@ export function Terminal() {
               </Card>
             </>
           )}
+          {tab === "Kalshi 15m" &&
+            (d?.contract ? (
+              <KalshiTab
+                c={d.contract}
+                now={now}
+                stale={stale}
+                busy={busy}
+                worker={worker}
+                mutate={(endpoint, body) => mutate(endpoint, body, "contracts")}
+              />
+            ) : (
+              <Card>
+                <p className="fine">
+                  Waiting for the worker&apos;s contract data.
+                </p>
+              </Card>
+            ))}
           {tab === "Signal History" && (
             <div className="space-y-4">
               <Card>

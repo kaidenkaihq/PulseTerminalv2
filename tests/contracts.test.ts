@@ -81,3 +81,17 @@ describe("contract-outcome dataset", () => {
     expect(o.result).toBeNull();
   });
 });
+describe("end-to-end synthetic replay", () => {
+  it("drives the full contract pipeline and stays at NO TRADE while uncalibrated", () => {
+    const e = runReplay(1000),
+      view = e.tick(Date.parse("2026-11-13T09:58:00Z") + 1000 * 1000).contract;
+    expect(view.synthetic).toBe(true);
+    expect(view.status).toContain("not Kalshi");
+    expect(view.engineViews.map((x) => x.name)).toEqual(["momentum", "fade"]);
+    expect(view.calibration).toHaveLength(8);
+    expect(view.verdict?.action).toBe("NO TRADE");
+    expect(view.verdict?.reasons.join(" ")).toContain("uncalibrated");
+    expect(view.paper.position).toBeNull();
+    expect(view.paper.policy.rules[0]).toContain("97¢");
+  });
+});
