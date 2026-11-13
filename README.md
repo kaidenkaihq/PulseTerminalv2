@@ -4,6 +4,8 @@ Version 2 of [PulseTerminal](https://github.com/kaidenkaihq/PulseTerminal), exte
 
 A working BTC-USD intelligence terminal: Coinbase trades and order book → persistent Fastify worker → one-second WebSocket snapshots → Next.js dashboard. Independent Kraken confirmation, timestamped 20-second extrapolations and actual outcomes, completed-candle signals, analytics, and simulation-only paper trading.
 
+All times in the app and in CSV exports are **US Eastern (ET)**, including daylight saving. Daily P&L and the daily loss limit reset at midnight ET.
+
 ## Start locally
 
 Requires Node.js **22+** (verified with Node 24) and npm. Exchange API keys and database credentials are **not required**.
@@ -103,7 +105,7 @@ This re-scores the saved windows with the new settings and prints a calibration 
 - **Dashboard:** 20s extrapolation, 10s/30s regression velocities, acceleration, 20s/60s notional aggressor pressure, CVD, book imbalance/spread, long/short ATR scenarios, crypto breadth, independent feed health, four-candle wick analysis, interactive chart with OHLC/Heikin Ashi, EMA9/20, SuperTrend, signal markers and live delta.
 - **Signal History:** original timestamped forecasts, pending/completed/missed outcomes, signal transitions, downloadable CSV. CSV includes up to 8,640 worker-retained forecasts; the UI holds the latest 1,000.
 - **Backtesting & Analytics:** actual completed forecast error and directional agreement, sample sizes, descriptive velocity regimes, paper results after fees/slippage, and an isolated in-app chronological fixture runner. Fixture metrics are explicitly separate from live results.
-- **Paper Trading:** manual long/short virtual orders, one open position, capped virtual buying power, configurable BTC size, fees/slippage, observed-price stops/targets, equity curve, UTC daily realized P&L, trade journal. Auto entries require explicit Settings opt-in and reset to manual on worker restart.
+- **Paper Trading:** manual long/short virtual orders, one open position, capped virtual buying power, configurable BTC size, fees/slippage, observed-price stops/targets, equity curve, daily realized P&L (ET day), trade journal. Auto entries require explicit Settings opt-in and reset to manual on worker restart.
 - **Settings:** source comparison, current startup configuration, diagnostics, session-only worker token, paper execution settings.
 
 There is no live order placement, wallet connection, brokerage API, funding flow or exchange trading key.

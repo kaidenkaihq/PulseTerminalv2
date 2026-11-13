@@ -1,4 +1,5 @@
 "use client";
+import { etDateTime, etDay, etTime } from "@/lib/time";
 import { useEffect, useRef } from "react";
 import {
   CandlestickSeries,
@@ -8,6 +9,8 @@ import {
   createChart,
   createSeriesMarkers,
   type UTCTimestamp,
+  type Time,
+  TickMarkType,
 } from "lightweight-charts";
 import type { Candle, Signal } from "@/lib/types";
 import { ema, heikinAshi, supertrend } from "@/lib/math";
@@ -44,7 +47,21 @@ export function MarketChart({
         horzLines: { color: "#ffffff07" },
       },
       rightPriceScale: { borderColor: "#ffffff0b" },
-      timeScale: { borderColor: "#ffffff0b", timeVisible: true },
+      timeScale: {
+        borderColor: "#ffffff0b",
+        timeVisible: true,
+        // Axis labels in US Eastern time; days at midnight ET.
+        tickMarkFormatter: (time: Time, type: TickMarkType) => {
+          const ms = (time as number) * 1000;
+          return type <= TickMarkType.DayOfMonth
+            ? etDay(ms).slice(5)
+            : etTime(ms, type === TickMarkType.TimeWithSeconds);
+        },
+      },
+      localization: {
+        timeFormatter: (time: Time) =>
+          `${etDateTime((time as number) * 1000)} ET`,
+      },
       crosshair: {
         vertLine: { color: "#59697d" },
         horzLine: { color: "#59697d" },

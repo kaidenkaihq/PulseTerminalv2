@@ -28,6 +28,7 @@ import { Card } from "./ui/card";
 import { KalshiStrip } from "./kalshi-strip";
 import { KalshiTab } from "./kalshi-tab";
 import { analytics } from "@/lib/analytics";
+import { etDateTime, etTime } from "@/lib/time";
 import type { Snapshot } from "@/lib/types";
 const MarketChart = dynamic(
   () => import("./chart").then((m) => m.MarketChart),
@@ -52,8 +53,7 @@ const signed = (v: number | null | undefined, dec = 2) =>
   v == null ? "—" : `${v >= 0 ? "+" : ""}${money(v, dec)}`;
 const age = (v: number | null | undefined) =>
   v == null ? "Unavailable" : `${(Math.max(0, v) / 1000).toFixed(1)}s`;
-const utc = (v: number) =>
-  new Date(v).toLocaleTimeString("en-GB", { timeZone: "UTC" });
+const et = (v: number) => etTime(v);
 const tabs = [
   { name: "Dashboard", icon: Layers3 },
   { name: "Kalshi 15m", icon: Target },
@@ -274,7 +274,7 @@ export function Terminal() {
                 : "LIVE MARKET DATA"}
           </span>
           <span className="mono text-[11px] muted hidden md:block">
-            {utc(now)} <span className="text-slate-600">UTC</span>
+            {et(now)} <span className="text-slate-600">ET</span>
           </span>
           <div className="size-7 rounded-full border border-white/10 flex items-center justify-center text-[9px] text-slate-400">
             PT
@@ -813,7 +813,7 @@ export function Terminal() {
                                 width="32"
                                 height="86"
                                 role="img"
-                                aria-label={`Closed candle ${utc(c.time)}, upper wick ${money((con?.upper ?? 0) * 100, 0)} percent, lower ${money((con?.lower ?? 0) * 100, 0)} percent`}
+                                aria-label={`Closed candle ${et(c.time)} ET, upper wick ${money((con?.upper ?? 0) * 100, 0)} percent, lower ${money((con?.lower ?? 0) * 100, 0)} percent`}
                               >
                                 <line
                                   x1="18"
@@ -849,7 +849,7 @@ export function Terminal() {
                                 )}
                               </svg>
                               <span className="mono text-[8px] muted">
-                                {utc(c.time).slice(0, 5)}
+                                {et(c.time).slice(0, 5)}
                               </span>
                             </div>
                           );
@@ -978,7 +978,7 @@ export function Terminal() {
                     <h2>Forecast ledger</h2>
                     <p className="fine mt-2">
                       Immutable creation records · actual observed prices at
-                      T+20s · UTC
+                      T+20s · ET
                     </p>
                   </div>
                   <Button asChild variant="outline">
@@ -995,7 +995,7 @@ export function Terminal() {
                     <thead>
                       <tr>
                         {[
-                          "Created UTC",
+                          "Created ET",
                           "Mode",
                           "Start",
                           "Projected",
@@ -1016,12 +1016,7 @@ export function Terminal() {
                           const o = d.outcomes.find((o) => o.id === f.id);
                           return (
                             <tr key={f.id} className="mono">
-                              <td>
-                                {new Date(f.created)
-                                  .toISOString()
-                                  .replace("T", " ")
-                                  .slice(0, 19)}
-                              </td>
+                              <td>{etDateTime(f.created)}</td>
                               <td>{f.mode}</td>
                               <td>${money(f.starting)}</td>
                               <td>${money(f.projected)}</td>
@@ -1058,7 +1053,7 @@ export function Terminal() {
                   <table>
                     <thead>
                       <tr>
-                        <th>Recorded UTC</th>
+                        <th>Recorded ET</th>
                         <th>State</th>
                         <th>Coverage</th>
                         <th>Explanation</th>
@@ -1071,7 +1066,7 @@ export function Terminal() {
                         .slice(0, 100)
                         .map((s, i) => (
                           <tr key={`${s.id}-${i}`}>
-                            <td className="mono">{utc(s.time)}</td>
+                            <td className="mono">{et(s.time)}</td>
                             <td>{s.state}</td>
                             <td>{money(s.coverage * 100, 0)}%</td>
                             <td>{s.reason}</td>
@@ -1209,7 +1204,7 @@ export function Terminal() {
                   ["Starting balance", d?.paper.starting],
                   ["Account equity", d?.paper.equity],
                   ["Realized net P&L", stats?.net],
-                  ["Daily P&L · UTC", d?.paper.dailyPnl],
+                  ["Daily P&L · ET", d?.paper.dailyPnl],
                 ].map(([l, v]) => (
                   <Card key={String(l)}>
                     <div className="eyebrow !text-[9px]">{l}</div>
@@ -1351,7 +1346,7 @@ export function Terminal() {
                     <thead>
                       <tr>
                         {[
-                          "Closed UTC",
+                          "Closed ET",
                           "Direction",
                           "Size",
                           "Entry",
@@ -1370,7 +1365,7 @@ export function Terminal() {
                         .reverse()
                         .map((t) => (
                           <tr key={t.id} className="mono">
-                            <td>{utc(t.closed)}</td>
+                            <td>{et(t.closed)}</td>
                             <td>{t.direction}</td>
                             <td>{t.size}</td>
                             <td>${money(t.entry)}</td>

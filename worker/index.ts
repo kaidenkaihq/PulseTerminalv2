@@ -16,6 +16,7 @@ import { KalshiFeed } from "./kalshi";
 import type { ContractCheckpoint } from "./contracts";
 import type { Forecast, Outcome, Signal, PaperState } from "../lib/types";
 import { fresh } from "../lib/math";
+import { etIso } from "../lib/time";
 export async function createServer(
   options: {
     mode?: "live" | "replay";
@@ -283,7 +284,7 @@ export async function createServer(
       official = new Map(c.settlements.map((s) => [s.window, s]));
     return csv(reply, "pulseterminal-contract-samples.csv", [
       [
-        "window_utc",
+        "window_et",
         "bucket",
         "seconds_to_close",
         "ticker",
@@ -300,7 +301,7 @@ export async function createServer(
         "official_result",
       ],
       ...c.samples.map((s) => [
-        new Date(s.window).toISOString(),
+        etIso(s.window),
         s.bucket,
         s.ttc,
         s.ticker,
@@ -358,8 +359,8 @@ export async function createServer(
   app.get("/api/contracts/trades.csv", (_req, reply) =>
     csv(reply, "pulseterminal-contract-trades.csv", [
       [
-        "opened_utc",
-        "closed_utc",
+        "opened_et",
+        "closed_et",
         "ticker",
         "side",
         "contracts",
@@ -377,8 +378,8 @@ export async function createServer(
         "auto",
       ],
       ...engine.contracts.paper.state.trades.map((t) => [
-        new Date(t.opened).toISOString(),
-        new Date(t.closed).toISOString(),
+        etIso(t.opened),
+        etIso(t.closed),
         t.ticker,
         t.side,
         t.contracts,
@@ -427,14 +428,14 @@ export async function createServer(
   );
   app.get("/api/history.csv", (_req, reply) => {
     const rows = [
-      "id,created_utc,mode,model,starting,projected,horizon_seconds,freshness_ms,status,actual,correct,absolute_error",
+      "id,created_et,mode,model,starting,projected,horizon_seconds,freshness_ms,status,actual,correct,absolute_error",
     ];
     for (const f of engine.forecasts) {
       const o = engine.outcomes.find((x) => x.id === f.id);
       rows.push(
         [
           f.id,
-          new Date(f.created).toISOString(),
+          etIso(f.created),
           f.mode,
           f.model,
           f.starting,

@@ -1,5 +1,7 @@
 # Calculation methodology · v1
 
+**Time display (v2):** every time shown in the app and in CSV exports is US Eastern (ET), labelled ET, with daylight saving applied (EST/EDT; exports carry the offset, e.g. `-05:00`). Calculations, 15m windows and stored records use UTC epoch milliseconds; a 15-minute window starts at the same instant in either zone.
+
 ## Price extrapolation
 
 Exchange timestamps are parsed to UTC milliseconds. Once per second the worker samples the most recent fresh Coinbase price; a burst of ticks cannot dominate the regression. There must be at least 70% sample coverage over both 10s and 30s, at least 70% elapsed span, five observations minimum, and a usable 10s window ending 5s earlier. A gap in the worker sampling clock exceeding 2s clears regressions. Market data older than the configured 5s limit cannot publish projections.
@@ -48,7 +50,7 @@ Confirmation compares Coinbase BTC-USD and Kraken BTC/USD last prices. Absolute 
 
 Long fills slip upward on entry and downward on exit; shorts reverse that convention. Fees charge notional at both fills. Net P&L = signed size×(exit−entry)−entry fee−exit fee. Balance deducts the entry fee immediately; equity adds unrealized mark-to-market P&L and estimates exit fees. Notional plus entry fee cannot exceed virtual balance. Stops/targets execute at the **next observed price**, so gaps can produce losses larger than the nominal stop. The simulation does not model queue position, partial fills, borrow fees, funding or real exchange liquidation.
 
-Realized R = net P&L / frozen initial stop risk. Maximum drawdown measures observed equity decline from the running peak. Daily P&L is realized net trade P&L by UTC close date. 15m hit rate counts profitable closed **signal-linked** opt-in auto paper trades, not manual trades. Zero trades means insufficient data. Forecast analytics include completed sample size, mean/median error, directional accuracy and descriptive velocity regime. Overlapping 20s forecasts are dependent. No metric constitutes a validated trading edge or calibrated win probability.
+Realized R = net P&L / frozen initial stop risk. Maximum drawdown measures observed equity decline from the running peak. Daily P&L is realized net trade P&L by **US Eastern (ET) close date**, resetting at midnight ET. 15m hit rate counts profitable closed **signal-linked** opt-in auto paper trades, not manual trades. Zero trades means insufficient data. Forecast analytics include completed sample size, mean/median error, directional accuracy and descriptive velocity regime. Overlapping 20s forecasts are dependent. No metric constitutes a validated trading edge or calibrated win probability.
 
 # Contract methodology · v2 (Kalshi KXBTC15M)
 
@@ -132,7 +134,7 @@ Kalshi quadratic fee (series `fee_type: quadratic`, `fee_multiplier` read live):
 - `lib/contractPaper.ts` is separate from the spot account. It buys YES/NO at the ask plus fee, subject to:
   - `CONTRACT_SIZE` contracts per trade;
   - `CONTRACT_MAX_STAKE` per window;
-  - `CONTRACT_MAX_DAILY_LOSS` per UTC day;
+  - `CONTRACT_MAX_DAILY_LOSS` per ET day (resets at midnight ET);
   - one position per window.
 - Settlement pays $1 per contract on the winning side and $0 otherwise, with no fee.
 - Exits use `ExitPolicy` (`owner-exit-v1`):

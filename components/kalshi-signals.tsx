@@ -5,16 +5,16 @@ import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { cents, prob } from "./kalshi-strip";
 import type { ContractSignal } from "@/lib/types";
+import { etDateTime, etTime } from "@/lib/time";
 type Row = ContractSignal & {
   result: "UP" | "DOWN" | null;
   resultSource: "official" | "proxy" | "missed" | "pending";
   correct: boolean | null;
 };
 type Page = { page: number; pages: number; total: number; rows: Row[] };
-const stamp = (v: number) =>
-  `${new Date(v).toISOString().slice(0, 10)} ${new Date(v).toLocaleTimeString("en-GB", { timeZone: "UTC" })}`;
+const stamp = (v: number) => etDateTime(v);
 const windowLabel = (v: number) =>
-  `${new Date(v).toLocaleTimeString("en-GB", { timeZone: "UTC", hour: "2-digit", minute: "2-digit" })}–${new Date(v + 900000).toLocaleTimeString("en-GB", { timeZone: "UTC", hour: "2-digit", minute: "2-digit" })}`;
+  `${etTime(v, false)}–${etTime(v + 900000, false)}`;
 const clock = (s: number) =>
   `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 // First appearance of each signal per window and source; the worker never records a repeat.
@@ -54,7 +54,7 @@ export function SignalHistory({
           <h2>Signal history</h2>
           <p className="fine mt-1">
             When each signal first appeared in a window. One row per window per
-            source; later seconds are not repeated. Times are UTC.
+            source; later seconds are not repeated. Times are ET.
           </p>
         </div>
         <span className="badge dim">{data?.total ?? count} first signals</span>

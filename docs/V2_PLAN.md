@@ -48,7 +48,7 @@ All of the following were read from Kalshi's own public API on 2026-11-13 (`GET 
 
 - Observed `open_time 10:30:00Z`, `close_time 10:45:00Z`. These are exactly our UTC `floor(epoch/900000)` 15m buckets, so a window id is the same `boundary(now, 900)` the candles already use.
 - **Important difference:** the strike is the average over the 60s _before_ open, so the strike is known (to Kalshi) at open, while our 15m candle `open` is the first trade _after_ open. Distance-to-strike always uses `floor_strike` when Kalshi supplies it, else the proxy 60s average.
-- DST affects only the Eastern time inside ticker strings and display. All logic is UTC.
+- DST affects only the Eastern time inside ticker strings and display. All logic is UTC. (Since 2026-11-13 every displayed time and export is in ET.)
 
 ### Fees
 

@@ -12,6 +12,7 @@ import {
 } from "./kalshi-strip";
 import { SignalHistory } from "./kalshi-signals";
 import type { ContractView } from "@/lib/types";
+import { etTime } from "@/lib/time";
 const usd = (v: number | null | undefined, dec = 2) =>
   v == null
     ? "—"
@@ -21,12 +22,7 @@ const usd = (v: number | null | undefined, dec = 2) =>
       })}`;
 const num = (v: number | null | undefined, dec = 4) =>
   v == null ? "—" : v.toFixed(dec);
-const utc = (v: number) =>
-  new Date(v).toLocaleTimeString("en-GB", {
-    timeZone: "UTC",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+const et = (v: number) => etTime(v, false);
 // Observed frequency against calibrated probability; the diagonal is perfect calibration.
 function Reliability({
   bins,
@@ -273,7 +269,7 @@ export function KalshiTab({
             <table>
               <thead>
                 <tr>
-                  <th>Open UTC</th>
+                  <th>Open ET</th>
                   <th>Strike</th>
                   <th>Proxy settle</th>
                   <th>Proxy</th>
@@ -291,7 +287,7 @@ export function KalshiTab({
                     );
                     return (
                       <tr key={o.id} className="mono">
-                        <td>{utc(o.window)}</td>
+                        <td>{et(o.window)}</td>
                         <td>{usd(o.strike)}</td>
                         <td>{usd(o.proxySettle)}</td>
                         <td>{o.result ?? o.status}</td>
@@ -313,7 +309,7 @@ export function KalshiTab({
           ["Contract balance", usd(p.balance)],
           ["Equity (at bid)", usd(p.equity)],
           ["Realized P&L", usd(m.pnl)],
-          ["Daily P&L · UTC", usd(p.dailyPnl)],
+          ["Daily P&L · ET", usd(p.dailyPnl)],
         ].map(([l, v]) => (
           <Card key={l}>
             <div className="eyebrow !text-[9px]">{l}</div>
@@ -522,7 +518,7 @@ export function KalshiTab({
           <table>
             <thead>
               <tr>
-                <th>Closed UTC</th>
+                <th>Closed ET</th>
                 <th>Side</th>
                 <th>Qty</th>
                 <th>Entry</th>
@@ -540,7 +536,7 @@ export function KalshiTab({
                 .reverse()
                 .map((t) => (
                   <tr key={t.id} className="mono">
-                    <td>{utc(t.closed)}</td>
+                    <td>{et(t.closed)}</td>
                     <td>{t.side === "UP" ? "YES" : "NO"}</td>
                     <td>{t.contracts}</td>
                     <td>{cents(t.entry)}</td>

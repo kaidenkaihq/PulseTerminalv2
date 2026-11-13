@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { kalshiFee } from "./contracts";
+import { etDay } from "./time";
 import type { Fees } from "./verdict";
 import type {
   ContractPaperState,
@@ -84,7 +85,7 @@ export type EntryMeta = {
   marketP: number | null;
   auto: boolean;
 };
-const day = (t: number) => new Date(t).toISOString().slice(0, 10);
+const day = etDay;
 export class ContractPaper {
   state: ContractPaperState;
   constructor(
@@ -152,9 +153,7 @@ export class ContractPaper {
       throw Error("No tradable ask for that side");
     this.updateDaily(now);
     if (s.dailyPnl <= -s.maxDailyLoss)
-      throw Error(
-        "Daily loss limit reached; entries paused until UTC midnight",
-      );
+      throw Error("Daily loss limit reached; entries paused until midnight ET");
     const entryFee = this.fee(s.contracts, ask),
       cost = s.contracts * ask + entryFee;
     if (cost > s.maxStake)

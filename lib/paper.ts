@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Mode, PaperState, Position } from "./types";
+import { etDay } from "./time";
 export class PaperAccount {
   state: PaperState;
   constructor(balance = 10000) {
@@ -112,9 +113,9 @@ export class PaperAccount {
         ? (price - p.entry) * p.size * (p.direction === "LONG" ? 1 : -1) -
           (price * p.size * s.feeBps) / 10000
         : 0);
-    const day = new Date(time).toISOString().slice(0, 10);
+    const day = etDay(time);
     s.dailyPnl = s.trades
-      .filter((t) => new Date(t.closed).toISOString().startsWith(day))
+      .filter((t) => etDay(t.closed) === day)
       .reduce((a, t) => a + t.pnl, 0);
     const last = s.curve.at(-1);
     if (!last || time - last.time >= 10000)

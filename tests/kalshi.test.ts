@@ -188,3 +188,22 @@ describe("contract engine", () => {
     expect(view.strike).toBeNull();
   });
 });
+describe("Eastern time display", () => {
+  it("formats ET with the correct EST/EDT offset and ET calendar day", async () => {
+    const { etDateTime, etDay, etIso, etTime, etZone } =
+      await import("../lib/time");
+    const est = Date.parse("2026-11-13T15:05:09Z"),
+      edt = Date.parse("2026-07-01T15:05:09Z"),
+      lateUtc = Date.parse("2026-11-14T03:30:00Z");
+    expect(etTime(est)).toBe("10:05:09");
+    expect(etTime(edt, false)).toBe("11:05");
+    expect(etZone(est)).toBe("EST");
+    expect(etZone(edt)).toBe("EDT");
+    expect(etIso(est)).toBe("2026-11-13T10:05:09-05:00");
+    expect(etIso(edt)).toBe("2026-07-01T11:05:09-04:00");
+    expect(etDay(lateUtc)).toBe("2026-11-13");
+    expect(etDateTime(Date.parse("2026-11-13T05:00:00Z"))).toBe(
+      "2026-11-13 00:00:00",
+    );
+  });
+});

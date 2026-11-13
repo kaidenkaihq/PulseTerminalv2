@@ -110,7 +110,7 @@ describe("chronological engine integration", () => {
       ).toBe(200);
       expect(engine.paper.state.trades[0].pnl).toBeGreaterThan(0);
       expect((await app.inject("/api/history.csv")).body).toContain(
-        "created_utc",
+        "created_et",
       );
     } finally {
       await app.close();
