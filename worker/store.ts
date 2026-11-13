@@ -20,7 +20,10 @@ export type Stored = {
   localOnly?: boolean;
 };
 // High-rate per-second contract records use separate, shorter-retention journal files.
-export const TICK_TABLES = new Set(["kalshi_quotes", "contract_snapshots"]);
+// The one metric snapshot per window × bucket (synced remotely) stays in the long-lived journal.
+export const tickFile = (row: Stored) =>
+  row.table === "kalshi_quotes" ||
+  (row.table === "contract_snapshots" && row.localOnly === true);
 const journal = /^(events|ticks)-\d{4}-\d{2}-\d{2}\.jsonl$/;
 export class Store {
   dir = process.env.LOCAL_DATA_DIR || "./data";
@@ -122,7 +125,7 @@ export class Store {
         await appendFile(
           path.join(
             this.dir,
-            `${TICK_TABLES.has(row.table) ? "ticks" : "events"}-${new Date(row.time).toISOString().slice(0, 10)}.jsonl`,
+            `${tickFile(row) ? "ticks" : "events"}-${new Date(row.time).toISOString().slice(0, 10)}.jsonl`,
           ),
           JSON.stringify({ ...row, localOnly: undefined }) + "\n",
         );

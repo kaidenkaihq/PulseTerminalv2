@@ -13,6 +13,7 @@ import { Store } from "./store";
 import { coinbaseAdapter, krakenAdapter, seedHistory } from "./feeds";
 import { replayStep, seedReplay } from "./replay";
 import { KalshiFeed } from "./kalshi";
+import type { ContractCheckpoint } from "./contracts";
 import type { Forecast, Outcome, Signal, PaperState } from "../lib/types";
 import { fresh } from "../lib/math";
 export async function createServer(
@@ -41,6 +42,12 @@ export async function createServer(
     engine.paper.state = restored.paper;
     engine.paper.state.auto = false;
   }
+  engine.contracts.restore(
+    await store.load<ContractCheckpoint>(`contracts-${mode}`),
+  );
+  const saveContracts = () =>
+    store.checkpoint(`contracts-${mode}`, engine.contracts.checkpoint());
+  engine.contracts.onOutcome = () => void saveContracts();
   const recovered = await store.recover(
     mode,
     engine.forecasts.at(-1)?.created ?? 0,
@@ -309,6 +316,7 @@ export async function createServer(
     feeds.forEach((f) => f.stop());
     clients.forEach((c) => c.close());
     await checkpoint();
+    await saveContracts();
     await store.flush();
   });
   return { app, engine };

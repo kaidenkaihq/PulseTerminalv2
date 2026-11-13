@@ -245,9 +245,65 @@ export type ContractView = {
   distancePercent: number | null;
   distanceAtr: number | null;
   settlements: ContractSettlement[];
+  outcomes: ContractOutcome[];
+  agreement: { compared: number; mismatches: number };
+  engines: Record<string, EngineReading>;
   basis: {
     note: string;
     lastOpen: number | null;
     lastClose: number | null;
   };
+};
+export type EngineReading = {
+  engine: string;
+  state: "UP" | "DOWN" | "NEUTRAL" | "NO SETUP" | "INSUFFICIENT DATA";
+  score: number | null;
+  reason: string;
+};
+// One per second per window. `eligible` marks the single metric sample per window × bucket.
+export type ContractSnapshot = {
+  id: string;
+  time: number;
+  mode: Mode;
+  window: number;
+  close: number;
+  ttc: number;
+  bucket: string | null;
+  eligible: boolean;
+  ticker: string | null;
+  strike: number | null;
+  strikeSource: "kalshi" | "proxy" | null;
+  price: number | null;
+  proxy: number | null;
+  proxySource: string | null;
+  distance: number | null;
+  distancePercent: number | null;
+  distanceAtr: number | null;
+  features: Record<string, number | string | null>;
+  quote: {
+    yesBid: number | null;
+    yesAsk: number | null;
+    noBid: number | null;
+    noAsk: number | null;
+    last: number | null;
+    age: number | null;
+    source: string;
+  } | null;
+  engines: Record<string, EngineReading>;
+  bar: { buy: number; sell: number; imbalance: number | null; cvd: number };
+  config: Record<string, unknown>;
+};
+export type ContractOutcome = {
+  id: string;
+  window: number;
+  close: number;
+  evaluated: number;
+  ticker: string | null;
+  strike: number | null;
+  strikeSource: "kalshi" | "proxy" | null;
+  proxySettle: number | null;
+  proxySource: string | null;
+  samples: number;
+  result: "UP" | "DOWN" | null;
+  status: "COMPLETE" | "MISSED";
 };

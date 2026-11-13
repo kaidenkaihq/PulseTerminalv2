@@ -10,9 +10,13 @@ import {
 } from "../lib/contracts";
 import { fresh } from "../lib/math";
 import type {
+  ContractOutcome,
   ContractQuote,
   ContractSettlement,
+  ContractSnapshot,
   ContractView,
+  EngineReading,
+  Signal,
 } from "../lib/types";
 import type { Engine } from "./engine";
 // One observed second. `proxy` stands in for CF Benchmarks BRTI, which is not observable in real time.
@@ -33,14 +37,34 @@ export type TickContext = {
   krakenFresh: boolean;
   imbalance: number | null;
   atr: number | null;
+  signal: Signal;
+  features: Record<string, number | string | null>;
 };
 const PROXY_MIN_SAMPLES = 45;
+export type ContractCheckpoint = {
+  samples: ContractSnapshot[];
+  outcomes: ContractOutcome[];
+  settlements: ContractSettlement[];
+};
 export class ContractEngine {
   quote: ContractQuote | null = null;
   bars: SecondBar[] = [];
   settlements: ContractSettlement[] = [];
   lastBar = 0;
   lastQuoteSaved = 0;
+  lastSnapshot = 0;
+  // Eligible (metric) snapshots and immutable window outcomes, bounded to ~200 days of windows.
+  samples: ContractSnapshot[] = [];
+  outcomes: ContractOutcome[] = [];
+  taken = new Set<string>();
+  windows = new Map<
+    number,
+    {
+      strike: number | null;
+      source: ContractSnapshot["strikeSource"];
+      ticker: string | null;
+    }
+  >();
   constructor(
     public engine: Engine,
     public config: ContractConfig,
@@ -197,7 +221,7 @@ export class ContractEngine {
       distance = strike !== null && proxy !== null ? proxy - strike : null,
       ttc = secondsToClose(now, close),
       latest = this.settlements.at(-1);
-    return {
+    const view: ContractView = {
       status: this.engine.healthFor("kalshi").status,
       synthetic: this.synthetic,
       quote: q,
@@ -230,7 +254,178 @@ export class ContractEngine {
             ? latest.expirationValue - latest.proxySettle
             : null,
       },
+      outcomes: [],
+      agreement: { compared: 0, mismatches: 0 },
+      engines: {},
     };
+    view.engines = this.readings(now, view, ctx);
+    this.record(now, view, ctx);
+    this.resolveWindows(now);
+    view.outcomes = this.outcomes.slice(-20);
+    view.agreement = this.agreement();
+    return view;
+  }
+  // OLS slope of session CVD over the last 60 observed seconds, USD per second.
+  cvdSlope() {
+    const b = this.bars.slice(-60);
+    if (b.length < 30) return null;
+    const x = b.map((v) => (v.time - b[0].time) / 1000),
+      mx = mean(x)!,
+      my = mean(b.map((v) => v.cvd))!,
+      d = x.reduce((a, v) => a + (v - mx) ** 2, 0);
+    return d
+      ? b.reduce((a, v, i) => a + (x[i] - mx) * (v.cvd - my), 0) / d
+      : null;
+  }
+  readings(_now: number, _view: ContractView, ctx: TickContext) {
+    const s = ctx.signal;
+    const momentum: EngineReading = {
+      engine: "momentum-v1",
+      state:
+        s.state === "LONG"
+          ? "UP"
+          : s.state === "SHORT"
+            ? "DOWN"
+            : s.state === "NEUTRAL"
+              ? "NEUTRAL"
+              : "INSUFFICIENT DATA",
+      score: s.score,
+      reason: s.reason,
+    };
+    return { momentum };
+  }
+  record(now: number, view: ContractView, ctx: TickContext) {
+    const second = Math.floor(now / 1000) * 1000;
+    if (second <= this.lastSnapshot || view.proxy === null) return;
+    this.lastSnapshot = second;
+    const q = view.quote,
+      bar = this.bars.at(-1)!,
+      key = `${view.window}|${view.bucket}`,
+      eligible =
+        view.bucket !== null &&
+        view.strike !== null &&
+        ctx.priceFresh &&
+        !this.taken.has(key);
+    if (eligible) this.taken.add(key);
+    if (view.strike !== null)
+      this.windows.set(view.window, {
+        strike: view.strike,
+        source: view.strikeSource,
+        ticker: q?.ticker ?? null,
+      });
+    else if (!this.windows.has(view.window))
+      this.windows.set(view.window, {
+        strike: null,
+        source: null,
+        ticker: null,
+      });
+    const snap: ContractSnapshot = {
+      id: `${this.engine.mode}-${second}`,
+      time: second,
+      mode: this.engine.mode,
+      window: view.window,
+      close: view.close,
+      ttc: view.ttc,
+      bucket: view.bucket,
+      eligible,
+      ticker: q?.ticker ?? null,
+      strike: view.strike,
+      strikeSource: view.strikeSource,
+      price: ctx.priceFresh ? ctx.price : null,
+      proxy: view.proxy,
+      proxySource: view.proxySource,
+      distance: view.distance,
+      distancePercent: view.distancePercent,
+      distanceAtr: view.distanceAtr,
+      features: { ...ctx.features, cvdSlope: this.cvdSlope() },
+      quote: q
+        ? {
+            yesBid: q.yesBid,
+            yesAsk: q.yesAsk,
+            noBid: q.noBid,
+            noAsk: q.noAsk,
+            last: q.last,
+            age: view.quoteAge,
+            source: q.source,
+          }
+        : null,
+      engines: view.engines,
+      bar: {
+        buy: bar.buy,
+        sell: bar.sell,
+        imbalance: bar.imbalance,
+        cvd: bar.cvd,
+      },
+      config: { buckets: this.config.buckets, fade: this.config.fade },
+    };
+    this.engine.persist("contract_snapshots", snap.id, second, snap, !eligible);
+    if (eligible) {
+      this.samples.push(snap);
+      this.samples = this.samples.slice(-20000);
+    }
+  }
+  // Settle every observed window once, ≥1s after close, on the proxy 60s average. Never revised.
+  resolveWindows(now: number) {
+    for (const [window, w] of this.windows) {
+      const close = window + WINDOW_MS;
+      if (now < close + 1000) continue;
+      this.windows.delete(window);
+      const id = `${this.engine.mode}-${window}`;
+      if (this.outcomes.some((o) => o.id === id)) continue;
+      const tail = this.bars.filter(
+          (b) => b.time >= close - 60000 && b.time < close && b.proxy !== null,
+        ),
+        settle = this.proxyAverage(close - 60000, close),
+        complete = settle !== null && w.strike !== null,
+        outcome: ContractOutcome = {
+          id,
+          window,
+          close,
+          evaluated: now,
+          ticker: w.ticker,
+          strike: w.strike,
+          strikeSource: w.source,
+          proxySettle: settle,
+          proxySource: tail.some((b) => b.source === "CB")
+            ? "CB"
+            : tail.length
+              ? "CB+KR"
+              : null,
+          samples: tail.length,
+          result: complete ? resolve(settle!, w.strike!) : null,
+          status: complete ? "COMPLETE" : "MISSED",
+        };
+      this.outcomes.push(outcome);
+      this.outcomes = this.outcomes.slice(-20000);
+      this.engine.persist("contract_outcomes", id, now, outcome);
+      this.onOutcome?.(outcome);
+    }
+  }
+  onOutcome?: (o: ContractOutcome) => void;
+  restore(state: Partial<ContractCheckpoint> | null) {
+    if (!state) return;
+    this.samples = state.samples ?? [];
+    this.outcomes = state.outcomes ?? [];
+    this.settlements = state.settlements ?? [];
+    for (const s of this.samples) this.taken.add(`${s.window}|${s.bucket}`);
+  }
+  checkpoint(): ContractCheckpoint {
+    return {
+      samples: this.samples,
+      outcomes: this.outcomes,
+      settlements: this.settlements,
+    };
+  }
+  agreement() {
+    let compared = 0,
+      mismatches = 0;
+    const official = new Map(this.settlements.map((s) => [s.window, s.result]));
+    for (const o of this.outcomes)
+      if (o.result && official.has(o.window)) {
+        compared++;
+        if (official.get(o.window) !== o.result) mismatches++;
+      }
+    return { compared, mismatches };
   }
 }
 // Abramowitz–Stegun 7.1.26 standard normal CDF, used only to price the synthetic replay contract.

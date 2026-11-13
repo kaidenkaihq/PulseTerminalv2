@@ -316,6 +316,27 @@ export class Engine {
       krakenFresh: fresh(this.kraken?.time, now, this.freshness),
       imbalance: book?.imbalance ?? null,
       atr: sig.atr,
+      signal: sig,
+      features: {
+        velocity10: projection?.velocity10 ?? null,
+        velocity30: projection?.velocity30 ?? null,
+        acceleration: projection?.acceleration ?? null,
+        buy20: p20.buyPercent,
+        buy60: p60.coverage >= 0.95 ? p60.buyPercent : null,
+        imbalance: book?.imbalance ?? null,
+        spread: book?.spread ?? null,
+        trend: sig.features.trend ?? null,
+        wick: sig.features.wick ?? null,
+        momentum: sig.features.momentum ?? null,
+        breadth,
+        confirmation: !confirmed
+          ? "STALE"
+          : div! <= this.divergence
+            ? "CONFIRMED"
+            : "DIVERGENT",
+        coinbaseAge: cbAge,
+        krakenAge: krAge,
+      },
     });
     return {
       contract,
