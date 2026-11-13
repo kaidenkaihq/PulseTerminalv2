@@ -1,6 +1,7 @@
 # PulseTerminal v2
 
-Version 2 of [PulseTerminal](https://github.com/kaidenkaihq/PulseTerminal), being extended for Kalshi BTC 15-minute contracts (see [docs/V2_PLAN.md](docs/V2_PLAN.md)). It runs on ports **3100** (web) and **4100** (worker) so it can run alongside v1 on 3000/4000.
+Version 2 of [PulseTerminal](https://github.com/kaidenkaihq/PulseTerminal), extended for Kalshi BTC 15-minute contracts (see [docs/V2_PLAN.md](docs/V2_PLAN.md)). It runs on ports **3100** (web) and **4100** (worker) so it can run alongside v1 on 3000/4000.
+
 A working BTC-USD intelligence terminal: Coinbase trades and order book → persistent Fastify worker → one-second WebSocket snapshots → Next.js dashboard. Independent Kraken confirmation, timestamped 20-second extrapolations and actual outcomes, completed-candle signals, analytics, and simulation-only paper trading.
 
 ## Start locally
@@ -24,8 +25,81 @@ DATA_MODE=replay npm run dev
 
 On Windows PowerShell set `$env:DATA_MODE="replay"` first. Alternatively run `npm run worker:replay` and `npm run dev:web` in separate terminals. Replay is prominently labeled **SYNTHETIC REPLAY**, has an isolated virtual account/history, and never claims independent Kraken agreement.
 
+## Kalshi 15-minute contracts: owner's guide
+
+This version watches Kalshi's **BTC 15-minute Up/Down** contracts (series `KXBTC15M`), turns each engine's score into a measured probability, compares it with what a contract actually costs, and paper-trades contracts. **It never places a real Kalshi order.** Kalshi is used for read-only prices.
+
+### 1. Do you need a Kalshi API key?
+
+No. Without a key the app reads Kalshi's public prices once per second and labels them `KALSHI · PUBLIC REST`. With a key it also gets a live WebSocket price stream (`KALSHI · WEBSOCKET`).
+
+### 2. Adding your key
+
+1. On kalshi.com, open your account settings and find **API Keys**. Create a key. Kalshi shows a **Key ID** and gives you a **private key** file once. Keep that file safe; anyone with it can trade your account.
+2. In the project folder, create a folder called `keys` and save the private key there, for example `keys/kalshi.key`. This folder is excluded from git and Docker, so the key cannot be uploaded by accident.
+3. Open the `.env` file in the project folder (copy `.env.example` to `.env` if you haven't) and fill in:
+
+   ```sh
+   KALSHI_API_KEY_ID=paste-your-key-id-here
+   KALSHI_PRIVATE_KEY_PATH=./keys/kalshi.key
+   ```
+
+   Never put these in a variable starting with `NEXT_PUBLIC_`.
+
+### 3. Running it
+
+```sh
+npm ci            # first time only
+npm run dev
+```
+
+Open **http://localhost:3100** and click the **Kalshi 15m** tab. Check **Settings → source comparison**: `kalshi` should say `STREAMING (key)` with a key or `PUBLIC REST (no key)` without one. To try it with no internet data, run `DATA_MODE=replay npm run dev`. That shows a clearly labelled **synthetic** contract that is not Kalshi.
+
+Leave the worker running. Everything it learns is saved in `./data`, and calibration needs days of windows.
+
+### 4. Reading the Kalshi tab
+
+- **Countdown / bucket.** Time left in the current window. Engines are measured separately in four phases: 15–10, 10–5, 5–2 and 2–0 minutes to close.
+- **Target vs proxy price.** The target is Kalshi's strike. Kalshi settles on CF Benchmarks' index, which this app can't see live, so it follows a Coinbase/Kraken average and shows the gap ("basis") each time Kalshi publishes an official number.
+- **How percentages are labelled.**
+  - **Market price (¢)** is what you'd pay: the ask plus Kalshi's fee.
+  - **Calibrated P (%)** is the model's measured probability.
+  - **Raw score** is not a probability.
+- **Edge after fees** = calibrated probability − market price.
+- **Engine cards.** Momentum (the original trend-following signal) and Panic-Fade (bets against a sharp move once the selling or buying runs out). They are never blended.
+- **Calibration table.** For each engine and phase it shows how many windows have been scored, the hit rate, and the Brier score, where lower is better. Baseline is the Brier you'd get by always guessing the usual UP rate. Click a row to see its reliability chart, where dots on the diagonal mean the probabilities are honest.
+- **Settlement: proxy vs official.** How often the app's own result disagreed with Kalshi's.
+- **Simulated contract order / Exit policy.** Paper-trade YES or NO. Positions sell automatically when your side's bid reaches **97¢**. Otherwise they hold to the $1/$0 settlement.
+
+### 5. Why it will mostly say NO TRADE
+
+A verdict appears only when **all** of these hold:
+
+1. An engine is **CALIBRATED** in the current phase. That takes at least 200 completed windows per phase, roughly **2+ days of continuous running**, and the engine must beat the always-guess-the-base-rate baseline on windows it had not seen.
+2. Its edge after Kalshi's fee is at least **3¢**.
+3. Kalshi, Coinbase and the Kraken cross-check are all fresh.
+
+Until then NO TRADE is the honest answer, and the reasons are listed under the verdict.
+
+### 6. Still needed from you
+
+- **Your stop-loss and ratchet numbers.** Once you have them, put them in `.env`, for example `CONTRACT_EXIT_PHASES=120:0.10` ("in the last 120s, sell if the bid falls to 10¢") and `CONTRACT_RATCHET=0.80:0.65` ("once the bid reaches 80¢, sell if it falls back to 65¢"). They are empty until you supply them.
+- **Your panic-fade definition**, if your research has one. The `FADE_*` settings in `.env` control the current default.
+- **A recent Kalshi fill receipt**, to confirm the fee rounding.
+
+### 7. Re-testing rules on saved history
+
+After changing `FADE_*` or `CALIBRATION_*` settings, run:
+
+```sh
+npm run contracts:rebuild
+```
+
+This re-scores the saved windows with the new settings and prints a calibration table, with the full report in `data/contract-rebuild.json`. Per-second history is kept for 30 days (`CONTRACT_TICK_RETENTION_DAYS`).
+
 ## Application
 
+- **Kalshi 15m:** contract, strike vs proxy, engine cards, walk-forward calibration, fee-inclusive edge, verdict, proxy/official settlement agreement, simulated contract account and CSV exports. A headline strip sits on top of the Dashboard. See the owner's guide above.
 - **Dashboard:** 20s extrapolation, 10s/30s regression velocities, acceleration, 20s/60s notional aggressor pressure, CVD, book imbalance/spread, long/short ATR scenarios, crypto breadth, independent feed health, four-candle wick analysis, interactive chart with OHLC/Heikin Ashi, EMA9/20, SuperTrend, signal markers and live delta.
 - **Signal History:** original timestamped forecasts, pending/completed/missed outcomes, signal transitions, downloadable CSV. CSV includes up to 8,640 worker-retained forecasts; the UI holds the latest 1,000.
 - **Backtesting & Analytics:** actual completed forecast error and directional agreement, sample sizes, descriptive velocity regimes, paper results after fees/slippage, and an isolated in-app chronological fixture runner. Fixture metrics are explicitly separate from live results.

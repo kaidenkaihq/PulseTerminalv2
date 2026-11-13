@@ -1,6 +1,8 @@
 # PulseTerminal v2 plan: Kalshi 15m contracts + calibration
 
-Phase 0 deliverable. Written 2026-11-13 on branch `upgrade/kalshi-calibration`. Nothing below is implemented yet.
+Phase 0 deliverable, written 2026-11-13. **Status: implemented in Phases 1–7** (see `docs/STATUS.md`).
+
+Owner answers (2026-11-13): has a Kalshi API key; take profit is always at 97¢. No written panic-fade definition and no stop-loss/ratchet numbers were supplied, so fade uses the configurable default and those exit rules are labelled placeholders.
 
 ## 1. Gap analysis, checked against the code
 

@@ -49,3 +49,106 @@ Confirmation compares Coinbase BTC-USD and Kraken BTC/USD last prices. Absolute 
 Long fills slip upward on entry and downward on exit; shorts reverse that convention. Fees charge notional at both fills. Net P&L = signed size×(exit−entry)−entry fee−exit fee. Balance deducts the entry fee immediately; equity adds unrealized mark-to-market P&L and estimates exit fees. Notional plus entry fee cannot exceed virtual balance. Stops/targets execute at the **next observed price**, so gaps can produce losses larger than the nominal stop. The simulation does not model queue position, partial fills, borrow fees, funding or real exchange liquidation.
 
 Realized R = net P&L / frozen initial stop risk. Maximum drawdown measures observed equity decline from the running peak. Daily P&L is realized net trade P&L by UTC close date. 15m hit rate counts profitable closed **signal-linked** opt-in auto paper trades, not manual trades. Zero trades means insufficient data. Forecast analytics include completed sample size, mean/median error, directional accuracy and descriptive velocity regime. Overlapping 20s forecasts are dependent. No metric constitutes a validated trading edge or calibrated win probability.
+
+# Contract methodology · v2 (Kalshi KXBTC15M)
+
+Facts below were read from Kalshi's own API and documentation on 2026-11-13; see `docs/V2_PLAN.md` for the verbatim rule text.
+
+## Contract, window and resolution
+
+- Series `KXBTC15M`. The active market is discovered with the public `GET /trade-api/v2/markets?series_ticker=KXBTC15M&status=open`; open/close times come from the API, never from ticker text (tickers embed US Eastern time).
+- Windows are `[open, open + 15m)` and coincide with our UTC `floor(epochMs / 900000)` buckets.
+- **Strike** = Kalshi `floor_strike`: the simple average of 60 seconds of CF Benchmarks BRTI before `open`. **Settle** = the same average before `close`. **YES (UP) iff settle ≥ strike**, both rounded to 2 dp; ties resolve UP.
+- **Settlement index is CF Benchmarks BRTI, not Coinbase.** BRTI is not observable here in real time. The **proxy** is the per-second mean of fresh Coinbase BTC-USD and Kraken BTC/USD prices (Coinbase alone when Kraken is stale, recorded as `CB`). The proxy strike/settle is the mean of observed proxy seconds in the same 60s span, and needs at least 45 of 60.
+- **Basis** is measured where the official value is observable: `floor_strike − proxy strike` at each open, and `expiration_value − proxy settle` at each settlement.
+
+## Feed
+
+- Without a key the worker polls the public market endpoint once per second. With `KALSHI_API_KEY_ID` + `KALSHI_PRIVATE_KEY_PATH` it also opens the authenticated WebSocket `ticker` channel (`wss://external-api-ws.kalshi.com/trade-api/ws/v2`).
+- Signing follows the Kalshi API Keys doc: the signed string is `timestamp(ms) + METHOD + path` (path includes `/trade-api/v2`, excludes the query string). RSA keys use RSA-PSS, SHA-256, MGF1-SHA-256 and a salt equal to the digest length. Ed25519 keys sign directly.
+- The WS ticker carries YES top of book only. NO bid = 1 − YES ask; NO ask = 1 − YES bid.
+- Quote freshness is receipt age ≤ `KALSHI_FRESHNESS_MS` (5s). REST polling refreshes it every second even when the book is unchanged.
+- Official results are polled from `GET /markets/{ticker}` from close + 4s until `result` is `yes`/`no` (Kalshi typically settles about 5s after close), giving up after an hour.
+- No order endpoint exists in the codebase.
+
+## Fees
+
+Kalshi quadratic fee (series `fee_type: quadratic`, `fee_multiplier` read live): `fee = ceil(KALSHI_FEE_RATE × multiplier × C × P × (1 − P))` to `KALSHI_FEE_PRECISION`. The defaults are 0.07 and $0.01 (non-direct member). Rounding is per order, not per contract. Example: 10 × $0.39 → $0.17. There is no settlement fee. Simulated entries pay the ask (taker); early exits receive the bid minus the same fee. Flag: the official fee-schedule PDF could not be fetched directly (bot checkpoint), so the formula was confirmed from Kalshi's indexed copy plus the Fee Rounding doc. Confirm the precision against a real fill.
+
+## Snapshots, outcomes and independence
+
+- Every observed second writes a `contract_snapshot`, which records:
+  - window and seconds-to-close (`ttc`);
+  - the bucket (default `15–10m`, `10–5m`, `5–2m`, `2–0m`; a bucket covers `(lower, upper]` seconds);
+  - strike and source, and proxy price and source;
+  - distance in $, % and 15m-ATR units;
+  - all existing features (10s/30s velocity, acceleration, 20s/60s buy %, CVD slope as the 60s OLS of session CVD in $/s, book imbalance and spread, trend alignment, wick, breadth, confirmation and feed ages);
+  - Kalshi quotes, and every engine's raw reading and configuration.
+- Per-second snapshots go to `ticks-*.jsonl` (local only, `CONTRACT_TICK_RETENTION_DAYS`, default 30).
+- The **first eligible second of each window × bucket** is the window's metric sample. Eligible means the strike is known and Coinbase is fresh. That sample goes to the long-lived journal and Supabase. **n counts windows, not seconds.**
+- At close + 1s each observed window gets one immutable `contract_outcome`: the proxy settle vs the strike, or `MISSED` if the closing minute or the strike was not observed. The official Kalshi result is stored separately as a `contract_settlement`. Metrics use the official result when present; proxy/official mismatches are counted and shown.
+
+## Engines (never averaged)
+
+- **momentum-v1** is the unchanged 15m composite from `lib/signals.ts`. Its raw score is in [−1, +1]; LONG/SHORT map to UP/DOWN.
+- **fade-v1** (`lib/fade.ts`). Default thresholds are configurable and recorded in every snapshot. Inputs are only seconds at or before `now`.
+  - σ is the root-mean-square of the last `FADE_LOOKBACK_MIN` (15) one-minute log returns of the proxy. It needs 80% second coverage and 70% of the returns.
+  - `z = ln(p_now / p_{now−FADE_WINDOW_S}) / (σ × √(FADE_WINDOW_S/60))`.
+  - Trigger: `|z| ≥ FADE_SIGMA` (2.5) **and** `FADE_TTC_MIN ≤ ttc ≤ FADE_TTC_MAX` (30–600s).
+  - Exhaustion is either of:
+    - The 10s aggressor share in the move's direction peaked at ≥ 55% inside the move window and has since fallen by ≥ `FADE_EXHAUSTION` (25%, relative).
+    - Book imbalance has flipped against the move, with |imbalance| ≥ 0.1.
+  - Direction is opposite the move. Magnitude = `0.5 × min(1, |z| / 2σ) + 0.5 × exhaustion strength`, in [0, 1].
+  - No trigger scores 0 (`NO SETUP`). Stale or short history gives `INSUFFICIENT DATA` (null).
+
+## Calibration (`calib-isotonic-v1`)
+
+- Per engine × bucket, raw score → P(UP) is fitted on completed windows. Isotonic regression (pool-adjacent-violators) is used from 100 training windows. Below that, 1-D logistic (Platt) regression. Below 20, no model. Predictions are clipped to [0.01, 0.99].
+- **Walk-forward:** window _i_ is predicted by a model fit only on windows before the latest scheduled refit, which happens every `CALIBRATION_REFIT_EVERY` (4) windows.
+- Out-of-sample metrics:
+  - n windows and hit rate (P ≥ 0.5 → UP);
+  - Brier score and log loss;
+  - reliability deciles;
+  - baseline Brier, which predicts the training base rate;
+  - recent Brier over the last `CALIBRATION_RECENT_N` (100).
+- **CALIBRATED** requires n ≥ `CALIBRATION_MIN_N` (200) **and** out-of-sample Brier < baseline. Otherwise the cell is `UNCALIBRATED (n=…)` and cannot drive a verdict.
+- The live probability comes from a model fit on all completed windows.
+- `npm run contracts:rebuild` re-scores fade from logged seconds with the current `.env` thresholds and recomputes calibration offline.
+
+## Edge and verdict
+
+- Market probability for UP = YES ask + fee per contract (at `CONTRACT_SIZE`). For DOWN it is NO ask + fee.
+- Edge(side) = calibrated P(side) − market probability. It is shown for both sides.
+- Verdict:
+  - Among CALIBRATED engines in the current bucket, take the one with the lowest recent out-of-sample Brier.
+  - Its better side must have edge ≥ `MIN_EDGE` (0.03).
+  - Kalshi, Coinbase and confirmation must all be fresh and CONFIRMED.
+  - Otherwise the verdict is **NO TRADE** with every applicable reason.
+- Engine disagreement is stated explicitly.
+- The old `(1 ± score)/2 × 100` figure is no longer shown. The raw score is labelled "raw score, not a probability".
+
+## Contract paper account
+
+- `lib/contractPaper.ts` is separate from the spot account. It buys YES/NO at the ask plus fee, subject to:
+  - `CONTRACT_SIZE` contracts per trade;
+  - `CONTRACT_MAX_STAKE` per window;
+  - `CONTRACT_MAX_DAILY_LOSS` per UTC day;
+  - one position per window.
+- Settlement pays $1 per contract on the winning side and $0 otherwise, with no fee.
+- Exits use `ExitPolicy` (`owner-exit-v1`):
+  - **Take profit when the held side's bid ≥ 97¢** (owner rule, always on).
+  - Phase stop-losses (`CONTRACT_EXIT_PHASES`, `ttc:stopBid`) and ratchet floors (`CONTRACT_RATCHET`, `peakTrigger:floor`) are **placeholders until the owner supplies them**. They are empty by default, so positions otherwise hold to settlement.
+- Auto entries follow the verdict, require opt-in, and reset to manual on restart.
+- If no official result arrives within an hour, the position settles on the proxy result and is labelled as such.
+- Metrics: P&L, P&L per contract, hit rate, average edge at entry vs realized P&L per contract, and splits by engine and bucket.
+
+## Official references (v2)
+
+- Kalshi series and markets API (public): https://api.elections.kalshi.com/trade-api/v2/series/KXBTC15M
+- Kalshi API keys and request signing: https://docs.kalshi.com/getting_started/api_keys
+- Kalshi WebSocket quick start: https://docs.kalshi.com/getting_started/quick_start_websockets
+- Kalshi ticker channel: https://docs.kalshi.com/websockets/market-ticker
+- Kalshi fee rounding: https://docs.kalshi.com/getting_started/fee_rounding
+- Kalshi fee schedule: https://kalshi.com/docs/kalshi-fee-schedule.pdf
+- Kalshi rate limits: https://docs.kalshi.com/getting_started/rate_limits
+- Contract terms (crypto): https://assets.kalshi.com/contract_terms/CRYPTO.pdf

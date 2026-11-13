@@ -32,3 +32,23 @@ Implemented application code, not a mockup. No existing application or productio
 - Regressions are extrapolations, scoring is heuristic, and execution is a simplified simulator. No probability calibration or profitability claim is made. Costs omit borrow/funding, partial fills and queue position.
 - Local journal retention is 180 days, evaluated at startup. Checkpoints are every 10s and after manual account mutations. A mounted volume is required for recovery on host replacement. Supabase's bounded retry queue is in memory; the local journal is the recovery source for rows not synced before a crash.
 - The Docker image/configuration is supplied; the local Docker daemon was unavailable, so the image itself could not be built here. The compiled worker artifact was started and checked directly on Node. Frontend and worker were executed directly on Node during verification.
+
+# v2 status: Kalshi 15m contracts + calibration
+
+| Area                          | Status                                                                                                                                                                                                                                                            |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kalshi read-only feed         | Implemented. Public REST verified live without a key (KXBTC15M quote, Kalshi strike, 1/s). Signed WebSocket implemented and unit-tested with generated RSA and Ed25519 keys; **not yet exercised against Kalshi with the owner's key**. No order endpoint exists. |
+| Settlement and basis          | Official results polled after close; proxy outcome, proxy/official mismatch count, and open/close basis implemented. Live official settlement and basis require a running worker across window closes.                                                            |
+| Contract snapshots / outcomes | Implemented: 1/s snapshots, one metric sample per window × bucket, immutable outcomes, tick journal with 30-day retention, Supabase migration (PGlite-tested).                                                                                                    |
+| Engines                       | `momentum-v1` (unchanged math) and `fade-v1` (configurable default; **not the owner's research definition**, which was not supplied).                                                                                                                             |
+| Calibration                   | Isotonic/logistic walk-forward per engine × bucket with Brier, log loss, reliability and baseline. Every cell starts UNCALIBRATED; ≥200 windows per bucket (≈2+ days of uptime) needed before any verdict.                                                        |
+| Verdict                       | Implemented with fee-inclusive edge and explicit NO TRADE reasons.                                                                                                                                                                                                |
+| Contract paper account        | Implemented. Exit policy: owner's **97¢ take-profit** active; **stop-loss phases and ratchet levels are placeholders** (empty) until the owner supplies them.                                                                                                     |
+| UI                            | Kalshi 15m tab and dashboard strip. Checked at 1440px and 390px (no horizontal scroll) against live Kalshi data.                                                                                                                                                  |
+
+## v2 limitations
+
+- Kalshi's settlement index (CF Benchmarks BRTI) is not observable in real time. The model watches a Coinbase/Kraken proxy, and basis is only measured at official strike/settle points.
+- The fee formula and $0.01 rounding precision should be confirmed against one of the owner's real Kalshi fills.
+- Replay mode never has Kraken confirmation, so its verdict is always NO TRADE; replay validates mechanics only.
+- Fade uses per-second history held in memory. After a worker restart it reports INSUFFICIENT DATA for about 15 minutes.

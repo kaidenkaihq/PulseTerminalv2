@@ -11,3 +11,8 @@ dist-worker/
 # Local tooling cache
 supabase/.temp/
 .DS_Store
+
+# Kalshi private keys must never be committed or baked into images
+*.pem
+*.key
+keys/
