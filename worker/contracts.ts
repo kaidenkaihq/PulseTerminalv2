@@ -9,13 +9,14 @@ import {
   windowStart,
 } from "../lib/contracts";
 import { fresh } from "../lib/math";
+import { momentum } from "../lib/engines";
+import { fade } from "../lib/fade";
 import type {
   ContractOutcome,
   ContractQuote,
   ContractSettlement,
   ContractSnapshot,
   ContractView,
-  EngineReading,
   Signal,
 } from "../lib/types";
 import type { Engine } from "./engine";
@@ -277,22 +278,12 @@ export class ContractEngine {
       ? b.reduce((a, v, i) => a + (x[i] - mx) * (v.cvd - my), 0) / d
       : null;
   }
-  readings(_now: number, _view: ContractView, ctx: TickContext) {
-    const s = ctx.signal;
-    const momentum: EngineReading = {
-      engine: "momentum-v1",
-      state:
-        s.state === "LONG"
-          ? "UP"
-          : s.state === "SHORT"
-            ? "DOWN"
-            : s.state === "NEUTRAL"
-              ? "NEUTRAL"
-              : "INSUFFICIENT DATA",
-      score: s.score,
-      reason: s.reason,
+  // Engines are evaluated independently and never averaged together.
+  readings(now: number, view: ContractView, ctx: TickContext) {
+    return {
+      momentum: momentum(ctx.signal),
+      fade: fade(this.bars, now, view.ttc, this.config.fade),
     };
-    return { momentum };
   }
   record(now: number, view: ContractView, ctx: TickContext) {
     const second = Math.floor(now / 1000) * 1000;
