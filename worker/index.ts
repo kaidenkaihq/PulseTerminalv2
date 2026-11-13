@@ -204,6 +204,166 @@ export async function createServer(
       return reply.code(400).send({ error: String(e) });
     }
   });
+  // Simulated Kalshi contract paper trading. There is no real order endpoint in this application.
+  app.post("/api/contracts/open", async (req, reply) => {
+    const input = z
+      .object({ side: z.enum(["UP", "DOWN"]) })
+      .safeParse(req.body);
+    if (!input.success)
+      return reply.code(400).send({ error: input.error.message });
+    const v = snapshot.contract.verdict,
+      e = snapshot.contract.engineViews,
+      best = e.find((x) => x.name === v?.engine),
+      side = input.data.side === "UP" ? best?.up : best?.down;
+    try {
+      engine.contracts.openPosition(input.data.side, Date.now(), {
+        engine: "manual",
+        bucket: snapshot.contract.bucket,
+        edge: side?.edge ?? null,
+        modelP: side?.modelP ?? null,
+        marketP: side?.marketP ?? null,
+        auto: false,
+      });
+      await saveAll();
+      return engine.contracts.paper.state;
+    } catch (err) {
+      return reply.code(400).send({ error: String(err) });
+    }
+  });
+  app.post("/api/contracts/close", async (_req, reply) => {
+    try {
+      engine.contracts.closePosition(Date.now());
+      await saveAll();
+      return engine.contracts.paper.state;
+    } catch (err) {
+      return reply.code(400).send({ error: String(err) });
+    }
+  });
+  app.post("/api/contracts/settings", async (req, reply) => {
+    const r = z
+      .object({
+        contracts: z.number().int().min(1).max(10000),
+        maxStake: z.number().min(1).max(1e6),
+        maxDailyLoss: z.number().min(1).max(1e6),
+        auto: z.boolean(),
+      })
+      .safeParse(req.body);
+    if (!r.success) return reply.code(400).send({ error: r.error.message });
+    try {
+      engine.contracts.paper.configure(r.data);
+      await saveAll();
+      return engine.contracts.paper.state;
+    } catch (err) {
+      return reply.code(400).send({ error: String(err) });
+    }
+  });
+  const csv = (
+    reply: {
+      header: (k: string, v: string) => typeof reply;
+      send: (b: string) => unknown;
+    },
+    name: string,
+    rows: (string | number | boolean | null | undefined)[][],
+  ) =>
+    reply
+      .header("Content-Type", "text/csv")
+      .header("Content-Disposition", `attachment; filename="${name}"`)
+      .send(
+        rows
+          .map((r) =>
+            r
+              .map((v) => (v === null || v === undefined ? "" : String(v)))
+              .join(","),
+          )
+          .join("\n"),
+      );
+  app.get("/api/contracts/samples.csv", (_req, reply) => {
+    const c = engine.contracts,
+      outcome = new Map(c.outcomes.map((o) => [o.window, o])),
+      official = new Map(c.settlements.map((s) => [s.window, s]));
+    return csv(reply, "pulseterminal-contract-samples.csv", [
+      [
+        "window_utc",
+        "bucket",
+        "seconds_to_close",
+        "ticker",
+        "strike",
+        "strike_source",
+        "proxy",
+        "distance_usd",
+        "distance_atr",
+        "yes_ask",
+        "no_ask",
+        "momentum_raw_score",
+        "fade_raw_score",
+        "proxy_result",
+        "official_result",
+      ],
+      ...c.samples.map((s) => [
+        new Date(s.window).toISOString(),
+        s.bucket,
+        s.ttc,
+        s.ticker,
+        s.strike,
+        s.strikeSource,
+        s.proxy,
+        s.distance,
+        s.distanceAtr,
+        s.quote?.yesAsk,
+        s.quote?.noAsk,
+        s.engines.momentum?.score,
+        s.engines.fade?.score,
+        outcome.get(s.window)?.result,
+        official.get(s.window)?.result,
+      ]),
+    ]);
+  });
+  app.get("/api/contracts/trades.csv", (_req, reply) =>
+    csv(reply, "pulseterminal-contract-trades.csv", [
+      [
+        "opened_utc",
+        "closed_utc",
+        "ticker",
+        "side",
+        "contracts",
+        "entry",
+        "entry_fee",
+        "exit",
+        "exit_fee",
+        "pnl",
+        "reason",
+        "engine",
+        "bucket",
+        "edge_at_entry",
+        "model_p",
+        "market_p",
+        "auto",
+      ],
+      ...engine.contracts.paper.state.trades.map((t) => [
+        new Date(t.opened).toISOString(),
+        new Date(t.closed).toISOString(),
+        t.ticker,
+        t.side,
+        t.contracts,
+        t.entry,
+        t.entryFee,
+        t.exit,
+        t.exitFee,
+        t.pnl,
+        t.reason,
+        t.engine,
+        t.bucket,
+        t.edge,
+        t.modelP,
+        t.marketP,
+        t.auto,
+      ]),
+    ]),
+  );
+  async function saveAll() {
+    await engine.drain();
+    await saveContracts();
+  }
   let backtestBusy = false;
   app.post(
     "/api/backtest",

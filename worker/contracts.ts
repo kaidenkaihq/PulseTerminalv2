@@ -18,9 +18,17 @@ import {
 } from "../lib/calibration";
 import { ENGINES } from "../lib/engines";
 import { decide } from "../lib/verdict";
+import {
+  ContractPaper,
+  contractMetrics,
+  OwnerExitPolicy,
+  type EntryMeta,
+} from "../lib/contractPaper";
 import type {
   ContractOutcome,
+  ContractPaperState,
   ContractQuote,
+  ContractTrade,
   ContractSettlement,
   ContractSnapshot,
   ContractView,
@@ -50,6 +58,7 @@ export type TickContext = {
 };
 const PROXY_MIN_SAMPLES = 45;
 export type ContractCheckpoint = {
+  paper?: ContractPaperState;
   samples: ContractSnapshot[];
   outcomes: ContractOutcome[];
   settlements: ContractSettlement[];
@@ -77,10 +86,46 @@ export class ContractEngine {
       ticker: string | null;
     }
   >();
+  paper: ContractPaper;
+  lastAuto = 0;
   constructor(
     public engine: Engine,
     public config: ContractConfig,
-  ) {}
+  ) {
+    this.paper = new ContractPaper(
+      config.paper,
+      new OwnerExitPolicy(config.paper.phases, config.paper.ratchet),
+      () => ({
+        rate: config.kalshi.feeRate,
+        multiplier: this.feeMultiplier,
+        precision: config.kalshi.feePrecision,
+      }),
+    );
+  }
+  openPosition(side: "UP" | "DOWN", now: number, meta: EntryMeta) {
+    const q = this.quote;
+    if (
+      !q ||
+      q.open !== windowStart(now) ||
+      !fresh(q.received, now, this.config.kalshi.freshness)
+    )
+      throw Error("A fresh quote for the current window is required");
+    const p = this.paper.open(side, q, now, this.engine.mode, meta);
+    this.engine.persist("contract_paper_positions", p.id, now, p);
+    return p;
+  }
+  closePosition(now: number) {
+    const q = this.quote;
+    if (!q || !fresh(q.received, now, this.config.kalshi.freshness))
+      throw Error("A fresh quote is required to sell");
+    return this.recordTrade(this.paper.sell(q, now));
+  }
+  recordTrade(t: ContractTrade) {
+    this.engine.persist("contract_paper_trades", t.id, t.closed, t);
+    this.engine.persist("contract_paper_positions", t.id, t.closed, t);
+    this.onOutcome?.(null);
+    return t;
+  }
   get synthetic() {
     return this.engine.mode === "replay";
   }
@@ -107,6 +152,8 @@ export class ContractEngine {
     this.settlements = this.settlements.slice(-20000);
     this.engine.persist("contract_settlements", record.id, s.settled, record);
     this.stale = true;
+    const t = this.paper.settle(s.window, s.result, s.settled, s.source);
+    if (t) this.recordTrade(t);
   }
   bar(now: number, ctx: TickContext) {
     const second = Math.floor(now / 1000) * 1000;
@@ -279,6 +326,8 @@ export class ContractEngine {
         precision: this.config.kalshi.feePrecision,
       },
       minEdge: this.config.minEdge,
+      paper: this.paper.state,
+      paperMetrics: contractMetrics([]),
     };
     view.engines = this.readings(now, view, ctx);
     this.record(now, view, ctx);
@@ -299,6 +348,13 @@ export class ContractEngine {
     });
     view.engineViews = decision.engines;
     view.verdict = decision.verdict;
+    this.trade(now, view);
+    view.paper = {
+      ...this.paper.state,
+      trades: this.paper.state.trades.slice(-200),
+      policy: this.paper.describe(),
+    };
+    view.paperMetrics = contractMetrics(this.paper.state.trades);
     view.outcomes = this.outcomes.slice(-20);
     view.agreement = this.agreement();
     return view;
@@ -430,7 +486,48 @@ export class ContractEngine {
       this.onOutcome?.(outcome);
     }
   }
-  onOutcome?: (o: ContractOutcome) => void;
+  onOutcome?: (o: ContractOutcome | null) => void;
+  // Exit policy marks, opt-in auto entries, and a proxy fallback if no official result ever arrives.
+  trade(now: number, view: ContractView) {
+    const closed = this.paper.mark(view.quote, view.ttc, now);
+    if (closed) this.recordTrade(closed);
+    const p = this.paper.state.position;
+    if (p && now > p.window + WINDOW_MS + 3600000) {
+      const o = this.outcomes.find((x) => x.window === p.window && x.result);
+      if (o) {
+        const t = this.paper.settle(
+          p.window,
+          o.result!,
+          now,
+          "proxy, no official result",
+        );
+        if (t) this.recordTrade(t);
+      }
+    }
+    const v = view.verdict;
+    if (
+      this.paper.state.auto &&
+      !this.paper.state.position &&
+      v?.side &&
+      v.action !== "NO TRADE" &&
+      !this.paper.state.traded.includes(view.window) &&
+      now - this.lastAuto > 1000
+    ) {
+      this.lastAuto = now;
+      try {
+        this.openPosition(v.side, now, {
+          engine: v.engine ?? "unknown",
+          bucket: view.bucket,
+          edge: v.edge,
+          modelP: v.modelP,
+          marketP: v.marketP,
+          auto: true,
+        });
+      } catch (e) {
+        this.engine.error("contract-paper", String(e));
+      }
+    }
+  }
   // Refit after each new outcome or official settlement; never per tick.
   recalibrate() {
     this.calibration = calibrationTable(
@@ -446,10 +543,15 @@ export class ContractEngine {
     this.samples = state.samples ?? [];
     this.outcomes = state.outcomes ?? [];
     this.settlements = state.settlements ?? [];
+    if (state.paper) {
+      // Auto entries always reset to manual on restart.
+      this.paper.state = { ...state.paper, auto: false };
+    }
     for (const s of this.samples) this.taken.add(`${s.window}|${s.bucket}`);
   }
   checkpoint(): ContractCheckpoint {
     return {
+      paper: this.paper.state,
       samples: this.samples,
       outcomes: this.outcomes,
       settlements: this.settlements,

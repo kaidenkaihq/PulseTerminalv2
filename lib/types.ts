@@ -1,5 +1,6 @@
 import type { CalibrationCell } from "./calibration";
 import type { EngineView, Fees, Verdict } from "./verdict";
+import type { contractMetrics } from "./contractPaper";
 export type Mode = "live" | "replay";
 export type Side = "buy" | "sell";
 export type Direction = "UP" | "DOWN" | "FLAT";
@@ -255,6 +256,8 @@ export type ContractView = {
   verdict: Verdict | null;
   fees: Fees;
   minEdge: number;
+  paper: ContractPaperState;
+  paperMetrics: ReturnType<typeof contractMetrics>;
   basis: {
     note: string;
     lastOpen: number | null;
@@ -313,4 +316,51 @@ export type ContractOutcome = {
   samples: number;
   result: "UP" | "DOWN" | null;
   status: "COMPLETE" | "MISSED";
+};
+export type ContractPosition = {
+  id: string;
+  window: number;
+  ticker: string;
+  side: "UP" | "DOWN";
+  contracts: number;
+  entry: number;
+  entryFee: number;
+  cost: number;
+  opened: number;
+  mode: Mode;
+  engine: string;
+  bucket: string | null;
+  edge: number | null;
+  modelP: number | null;
+  marketP: number | null;
+  peakBid: number;
+  auto: boolean;
+};
+export type ContractTrade = ContractPosition & {
+  exit: number;
+  exitFee: number;
+  proceeds: number;
+  pnl: number;
+  closed: number;
+  reason: string;
+  realizedEdge: number;
+};
+export type ContractPaperState = {
+  starting: number;
+  balance: number;
+  equity: number;
+  auto: boolean;
+  contracts: number;
+  maxStake: number;
+  maxDailyLoss: number;
+  position: ContractPosition | null;
+  trades: ContractTrade[];
+  curve: { time: number; equity: number }[];
+  dailyPnl: number;
+  traded: number[];
+  policy: {
+    name: string;
+    placeholder: boolean;
+    rules: string[];
+  };
 };
