@@ -95,3 +95,45 @@ describe("end-to-end synthetic replay", () => {
     expect(view.paper.policy.rules[0]).toContain("97¢");
   });
 });
+describe("signal history", () => {
+  it("records only the first UP/DOWN per window and source, never a duplicate", () => {
+    const e = new Engine("replay", memory()),
+      w = Date.parse("2026-11-13T10:00:00Z");
+    const view = (state: "UP" | "DOWN" | "NEUTRAL", window = w) =>
+      ({
+        window,
+        ttc: 400,
+        bucket: "10–5m",
+        strike: 1,
+        proxy: 1,
+        quote: null,
+        verdict: null,
+        engineViews: [
+          {
+            name: "fade",
+            label: "Panic-Fade",
+            status: "UNCALIBRATED",
+            reading: { state, score: 0.4 },
+            up: { modelP: null, marketP: 0.5 },
+            down: { modelP: null, marketP: 0.52 },
+          },
+        ],
+      }) as never;
+    e.contracts.recordSignals(w + 1000, view("NEUTRAL"));
+    e.contracts.recordSignals(w + 2000, view("UP"));
+    e.contracts.recordSignals(w + 3000, view("UP"));
+    e.contracts.recordSignals(w + 4000, view("DOWN"));
+    expect(e.contracts.signals).toHaveLength(1);
+    expect(e.contracts.signals[0]).toMatchObject({
+      time: w + 2000,
+      direction: "UP",
+      source: "fade",
+    });
+    e.contracts.recordSignals(w + 901000, view("DOWN", w + 900000));
+    expect(e.contracts.signals).toHaveLength(2);
+    const restored = new Engine("replay", memory());
+    restored.contracts.restore(e.contracts.checkpoint());
+    restored.contracts.recordSignals(w + 902000, view("UP", w + 900000));
+    expect(restored.contracts.signals).toHaveLength(2);
+  });
+});

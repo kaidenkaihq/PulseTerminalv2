@@ -226,6 +226,25 @@ describe("contract API", () => {
     expect((await app.inject("/api/contracts/samples.csv")).body).toContain(
       "fade_raw_score",
     );
+    for (let i = 0; i < 25; i++)
+      engine.contracts.signals.push({
+        id: `s${i}`,
+        time: at + i,
+        window: at - i * 900000,
+        source: "fade",
+        direction: "UP",
+      } as never);
+    const first = (await app.inject("/api/contracts/signals")).json();
+    expect(first).toMatchObject({ page: 1, pages: 3, total: 25 });
+    expect(first.rows).toHaveLength(10);
+    expect(first.rows[0].id).toBe("s24");
+    expect(first.rows[0].resultSource).toBe("pending");
+    const last = (await app.inject("/api/contracts/signals?page=3")).json();
+    expect(last.rows).toHaveLength(5);
+    expect(last.rows.at(-1).id).toBe("s0");
+    expect(
+      (await app.inject("/api/contracts/signals?size=500")).statusCode,
+    ).toBe(400);
     engine.contracts.paper.state.auto = true;
     await app.close();
     const second = await createServer({

@@ -49,17 +49,19 @@ it("applies the contract migration with RLS, immutable originals and its own pru
     for (const file of [
       "20261113092438_pulseterminal.sql",
       "20261113120000_kalshi_contracts.sql",
+      "20261113150000_contract_signals.sql",
     ])
       await db.exec(await readFile(`supabase/migrations/${file}`, "utf8"));
     const tables = await db.query<{ relrowsecurity: boolean }>(
       "select relrowsecurity from pg_class where relnamespace='public'::regnamespace and relkind='r'",
     );
-    expect(tables.rows).toHaveLength(14);
+    expect(tables.rows).toHaveLength(15);
     expect(tables.rows.every((x) => x.relrowsecurity)).toBe(true);
     for (const table of [
       "contract_snapshots",
       "contract_outcomes",
       "contract_settlements",
+      "contract_signals",
     ]) {
       await db.exec(
         `insert into public.${table}(id,event_time,mode,payload) values ('w1', now(), 'live', '{"result":"UP"}')`,

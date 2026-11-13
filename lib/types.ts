@@ -258,6 +258,7 @@ export type ContractView = {
   minEdge: number;
   paper: ContractPaperState;
   paperMetrics: ReturnType<typeof contractMetrics>;
+  signalCount: number;
   basis: {
     note: string;
     lastOpen: number | null;
@@ -363,4 +364,23 @@ export type ContractPaperState = {
     placeholder: boolean;
     rules: string[];
   };
+};
+// The first moment a directional signal appeared for one source in one window. Never repeated.
+export type ContractSignal = {
+  id: string;
+  time: number;
+  mode: Mode;
+  window: number;
+  ticker: string | null;
+  ttc: number;
+  bucket: string | null;
+  source: "momentum" | "fade" | "verdict";
+  label: string;
+  direction: "UP" | "DOWN";
+  score: number | null;
+  p: number | null;
+  calibrated: boolean;
+  marketP: number | null;
+  strike: number | null;
+  proxy: number | null;
 };

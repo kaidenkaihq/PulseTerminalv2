@@ -28,6 +28,7 @@ import type {
   ContractOutcome,
   ContractPaperState,
   ContractQuote,
+  ContractSignal,
   ContractTrade,
   ContractSettlement,
   ContractSnapshot,
@@ -59,6 +60,7 @@ export type TickContext = {
 const PROXY_MIN_SAMPLES = 45;
 export type ContractCheckpoint = {
   paper?: ContractPaperState;
+  signals?: ContractSignal[];
   samples: ContractSnapshot[];
   outcomes: ContractOutcome[];
   settlements: ContractSettlement[];
@@ -74,6 +76,8 @@ export class ContractEngine {
   samples: ContractSnapshot[] = [];
   outcomes: ContractOutcome[] = [];
   taken = new Set<string>();
+  signals: ContractSignal[] = [];
+  signalKeys = new Set<string>();
   calibration: CalibrationCell[] = [];
   // Read live from the Kalshi series (fee_multiplier); 1 until confirmed.
   feeMultiplier = 1;
@@ -328,6 +332,7 @@ export class ContractEngine {
       minEdge: this.config.minEdge,
       paper: this.paper.state,
       paperMetrics: contractMetrics([]),
+      signalCount: 0,
     };
     view.engines = this.readings(now, view, ctx);
     this.record(now, view, ctx);
@@ -348,6 +353,8 @@ export class ContractEngine {
     });
     view.engineViews = decision.engines;
     view.verdict = decision.verdict;
+    this.recordSignals(now, view);
+    view.signalCount = this.signals.length;
     this.trade(now, view);
     view.paper = {
       ...this.paper.state,
@@ -538,8 +545,76 @@ export class ContractEngine {
     );
     this.stale = false;
   }
+  // Keeps only the first UP/DOWN appearance per window per source (Momentum, Panic-Fade, verdict).
+  recordSignals(now: number, view: ContractView) {
+    const found: Omit<
+      ContractSignal,
+      | "id"
+      | "time"
+      | "mode"
+      | "window"
+      | "ticker"
+      | "ttc"
+      | "bucket"
+      | "strike"
+      | "proxy"
+    >[] = [];
+    for (const e of view.engineViews)
+      if (e.reading.state === "UP" || e.reading.state === "DOWN") {
+        const side = e.reading.state === "UP" ? e.up : e.down;
+        found.push({
+          source: e.name,
+          label: e.label,
+          direction: e.reading.state,
+          score: e.reading.score,
+          p: side.modelP,
+          calibrated: e.status === "CALIBRATED",
+          marketP: side.marketP,
+        });
+      }
+    const v = view.verdict;
+    if (v?.side && v.action !== "NO TRADE")
+      found.push({
+        source: "verdict",
+        label: v.action,
+        direction: v.side,
+        score: null,
+        p: v.modelP,
+        calibrated: true,
+        marketP: v.marketP,
+      });
+    for (const f of found) {
+      const key = `${view.window}|${f.source}`;
+      if (this.signalKeys.has(key)) continue;
+      this.signalKeys.add(key);
+      const signal: ContractSignal = {
+        ...f,
+        id: `${this.engine.mode}-${view.window}-${f.source}`,
+        time: now,
+        mode: this.engine.mode,
+        window: view.window,
+        ticker: view.quote?.ticker ?? null,
+        ttc: view.ttc,
+        bucket: view.bucket,
+        strike: view.strike,
+        proxy: view.proxy,
+      };
+      this.signals.push(signal);
+      this.engine.persist("contract_signals", signal.id, now, signal);
+      this.onOutcome?.(null);
+    }
+    if (this.signals.length > 20000) {
+      this.signals = this.signals.slice(-20000);
+      this.signalKeys = new Set(
+        this.signals.map((x) => `${x.window}|${x.source}`),
+      );
+    }
+  }
   restore(state: Partial<ContractCheckpoint> | null) {
     if (!state) return;
+    this.signals = state.signals ?? [];
+    for (const x of this.signals)
+      this.signalKeys.add(`${x.window}|${x.source}`);
     this.samples = state.samples ?? [];
     this.outcomes = state.outcomes ?? [];
     this.settlements = state.settlements ?? [];
@@ -552,6 +627,7 @@ export class ContractEngine {
   checkpoint(): ContractCheckpoint {
     return {
       paper: this.paper.state,
+      signals: this.signals,
       samples: this.samples,
       outcomes: this.outcomes,
       settlements: this.settlements,

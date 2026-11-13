@@ -318,6 +318,43 @@ export async function createServer(
       ]),
     ]);
   });
+  // Newest first, 10 per page by default, each row joined with its window's result once known.
+  app.get("/api/contracts/signals", (req, reply) => {
+    const q = z
+      .object({
+        page: z.coerce.number().int().min(1).default(1),
+        size: z.coerce.number().int().min(1).max(50).default(10),
+      })
+      .safeParse(req.query);
+    if (!q.success) return reply.code(400).send({ error: q.error.message });
+    const c = engine.contracts,
+      total = c.signals.length,
+      pages = Math.max(1, Math.ceil(total / q.data.size)),
+      page = Math.min(q.data.page, pages),
+      official = new Map(c.settlements.map((s) => [s.window, s.result])),
+      proxy = new Map(c.outcomes.map((o) => [o.window, o])),
+      rows = c.signals
+        .slice()
+        .reverse()
+        .slice((page - 1) * q.data.size, page * q.data.size)
+        .map((s) => {
+          const o = proxy.get(s.window),
+            result = official.get(s.window) ?? o?.result ?? null;
+          return {
+            ...s,
+            result,
+            resultSource: official.has(s.window)
+              ? "official"
+              : o?.result
+                ? "proxy"
+                : o?.status === "MISSED"
+                  ? "missed"
+                  : "pending",
+            correct: result ? result === s.direction : null,
+          };
+        });
+    return { page, pages, total, size: q.data.size, rows };
+  });
   app.get("/api/contracts/trades.csv", (_req, reply) =>
     csv(reply, "pulseterminal-contract-trades.csv", [
       [
