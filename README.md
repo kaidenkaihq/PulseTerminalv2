@@ -1,5 +1,6 @@
-# PulseTerminal
+# PulseTerminal v2
 
+Version 2 of [PulseTerminal](https://github.com/kaidenkaihq/PulseTerminal), being extended for Kalshi BTC 15-minute contracts (see [docs/V2_PLAN.md](docs/V2_PLAN.md)). It runs on ports **3100** (web) and **4100** (worker) so it can run alongside v1 on 3000/4000.
 A working BTC-USD intelligence terminal: Coinbase trades and order book → persistent Fastify worker → one-second WebSocket snapshots → Next.js dashboard. Independent Kraken confirmation, timestamped 20-second extrapolations and actual outcomes, completed-candle signals, analytics, and simulation-only paper trading.
 
 ## Start locally
@@ -12,7 +13,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Open **http://localhost:3000**. The worker binds to **http://127.0.0.1:4000**. The frontend connects directly to `/ws`; `/health` reports process and market health. Allow outbound HTTPS and WSS to Coinbase and Kraken. Allow approximately **30 seconds** for regressions and **60 seconds** for full signal flow coverage. Completed predictions begin approximately **50 seconds** after a healthy startup. A signal can legitimately be NEUTRAL or INSUFFICIENT DATA.
+Open **http://localhost:3100**. The worker binds to **http://127.0.0.1:4100**. The frontend connects directly to `/ws`; `/health` reports process and market health. Allow outbound HTTPS and WSS to Coinbase and Kraken. Allow approximately **30 seconds** for regressions and **60 seconds** for full signal flow coverage. Completed predictions begin approximately **50 seconds** after a healthy startup. A signal can legitimately be NEUTRAL or INSUFFICIENT DATA.
 
 If either exchange is inaccessible, the UI reports its actual status. Live mode never silently generates prices. To explicitly use a synthetic demonstration:
 
@@ -103,7 +104,7 @@ docker build -f Dockerfile.worker -t pulseterminal-worker .
 docker compose up --build worker
 ```
 
-Or `npm run worker` on Node 22+. For Railway/equivalent use `Dockerfile.worker`, port `4000` (or `WORKER_PORT`), set `WORKER_HOST=0.0.0.0`, configure HTTPS/WSS, exact frontend origins, a worker bearer token, and a `/data` persistent volume. Run **one worker per account**. Docker runs as non-root and includes a process-health probe; inspect `/health`'s market field separately for stale data. No production deployment is performed by these setup commands unless you run them on a production host.
+Or `npm run worker` on Node 22+. For Railway/equivalent use `Dockerfile.worker`, port `4100` (or `WORKER_PORT`), set `WORKER_HOST=0.0.0.0`, configure HTTPS/WSS, exact frontend origins, a worker bearer token, and a `/data` persistent volume. Run **one worker per account**. Docker runs as non-root and includes a process-health probe; inspect `/health`'s market field separately for stale data. No production deployment is performed by these setup commands unless you run them on a production host.
 
 See [methodology](docs/METHODOLOGY.md), [implementation status](docs/STATUS.md), and [verification report](docs/VERIFICATION.md).
 

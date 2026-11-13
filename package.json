@@ -1,5 +1,5 @@
 {
-  "name": "pulseterminal",
+  "name": "pulseterminal-v2",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -7,12 +7,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "concurrently -k -n web,worker \"next dev\" \"tsx watch worker/index.ts\"",
-    "dev:web": "next dev",
+    "dev": "concurrently -k -n web,worker \"next dev -p 3100\" \"tsx watch worker/index.ts\"",
+    "dev:web": "next dev -p 3100",
     "worker": "tsx worker/index.ts",
     "worker:replay": "cross-env DATA_MODE=replay tsx worker/index.ts",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3100",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",

@@ -59,7 +59,7 @@ describe("chronological engine integration", () => {
     try {
       const url = await app.listen({ port: 0, host: "127.0.0.1" });
       const ws = new WebSocket(url.replace("http", "ws") + "/ws", {
-        origin: "http://localhost:3000",
+        origin: "http://localhost:3100",
       });
       const message = await new Promise<string>((resolve, reject) => {
         ws.once("message", (x) => resolve(x.toString()));

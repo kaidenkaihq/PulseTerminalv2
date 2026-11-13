@@ -73,7 +73,7 @@ export async function createServer(
     bodyLimit: 8192,
   });
   const origins = (
-    process.env.FRONTEND_ORIGINS || "http://localhost:3000"
+    process.env.FRONTEND_ORIGINS || "http://localhost:3100"
   ).split(",");
   await app.register(cors, { origin: origins });
   await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
@@ -303,7 +303,7 @@ export async function createServer(
 if (process.env.NODE_ENV !== "test") {
   const { app } = await createServer();
   await app.listen({
-    port: Number(process.env.WORKER_PORT) || 4000,
+    port: Number(process.env.WORKER_PORT) || 4100,
     host: process.env.WORKER_HOST || "127.0.0.1",
   });
   for (const name of ["SIGINT", "SIGTERM"])

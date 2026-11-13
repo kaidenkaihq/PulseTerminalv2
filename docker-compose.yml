@@ -4,11 +4,11 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     ports:
-      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:4100:4100"
     environment:
       DATA_MODE: ${DATA_MODE:-live}
       WORKER_API_TOKEN: ${WORKER_API_TOKEN:-}
-      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:3000}
+      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:3100}
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
     volumes:

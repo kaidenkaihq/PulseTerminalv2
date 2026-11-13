@@ -37,7 +37,7 @@ const MarketChart = dynamic(
     ),
   },
 );
-const worker = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:4000";
+const worker = process.env.NEXT_PUBLIC_WORKER_URL || "http://localhost:4100";
 const money = (v: number | null | undefined, dec = 2) =>
   v == null
     ? "—"
